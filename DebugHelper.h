@@ -35,6 +35,8 @@ typedef enum
 
 static OutputLevel outputLevel = FULL;                    /* Change to your output level  */                            // Set this to NONE if no serial connection is used.
 
+template<typename... Args> void SerialPrintf(int type, const char * f, Args... args);
+
 /** 
  * Wrapper functions for Serial.print(..) to allow filtering and setting an output log level.
  */
@@ -53,6 +55,7 @@ void printHexString(std::string value);
  * Prints an uint8_t array as hex values.
  */
 void printHexArray(uint8_t *data, size_t length);
+
 
 /**
  * Converts an uint8_t array to string.

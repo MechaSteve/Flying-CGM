@@ -44,6 +44,7 @@
 #include "BLEScan.h"
 #include "DebugHelper.h"
 #include "G6DexcomBLE.h"
+#include "G6DexcomClient.h"
 
 #define STATE_START_SCAN 0                                                                                              // Set this state to start the scan.
 #define STATE_SCANNING   1                                                                                              // Indicates the esp is currently scanning for devices.
@@ -268,7 +269,7 @@ void run()
     DexcomConnection::controlRegister();                             // Now register (after auth) to receive new data on the control characteristic.
 
     // Reading current time from the transmitter (important for backfill).
-    if(!readTimeMessage())
+    if(!DexcomClient::readTimeMessage())
         SerialPrintln(ERROR, "Error reading Time Message!");
     
     // Optional: reading battery status.
@@ -276,7 +277,7 @@ void run()
         //SerialPrintln(ERROR, "Can't read Battery Status!");
 
     //Read current glucose level to save it.
-    if(!readGlucose())
+    if(!DexcomClient::readGlucose())
         SerialPrintln(ERROR, "Can't read Glucose!");
 
     // Optional: read sensor raw (unfiltered / filtered) data.
@@ -291,7 +292,7 @@ void run()
     {
         DexcomConnection::backfillRegister();                         // Now register on the backfill characteristic.       
         // Read backfill of the last x values to also saves them.
-        if(!readBackfill())
+        if(!DexcomClient::readBackfill())
             SerialPrintln(ERROR, "Can't read backfill data!");
     }
                                                                                   // When we reached this point no error occured.

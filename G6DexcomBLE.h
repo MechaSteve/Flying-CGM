@@ -100,6 +100,7 @@ class DexcomConnection : public BLEClientCallbacks
         static unsigned long sinceDisconnect();
         static bool lastConnectionWasError();
         static bool resetConnection();
+        static void commFault(std::string faultMessage);
 
     private:
         static void indicateControlCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify);
@@ -110,7 +111,6 @@ class DexcomConnection : public BLEClientCallbacks
         static bool registerForNotification(notify_callback _callback, BLERemoteCharacteristic *pBLERemoteCharacteristic);
         static bool forceRegisterNotificationAndIndication(notify_callback _callback, BLERemoteCharacteristic *pBLERemoteCharacteristic, bool isNotify);
         static bool registerForIndication(notify_callback _callback, BLERemoteCharacteristic *pBLERemoteCharacteristic);
-        static void commFault(std::string faultMessage);
 
         class nestedAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
         {

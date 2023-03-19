@@ -1,5 +1,5 @@
 {
     "configuration": "LoopCore=1,EventsCore=1,USBMode=default,CDCOnBoot=cdc,MSCOnBoot=default,DFUOnBoot=default,UploadMode=cdc,PSRAM=enabled,PartitionScheme=tinyuf2,CPUFreq=240,FlashMode=qio,FlashSize=4M,UploadSpeed=921600,DebugLevel=none,EraseFlash=none",
     "board": "esp32:esp32:adafruit_feather_esp32s3_tft",
-    "sketch": "Flying-CGM\\Flying-CGM.ino"
+    "sketch": "Flying-CGM.ino"
 }
