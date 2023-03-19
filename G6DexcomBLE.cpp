@@ -72,6 +72,90 @@ bool DexcomSecurity::bonding = false;
 bool DexcomSecurity::bondingFinished = false;
 bool DexcomSecurity::forceRebonding = false;
 
+bool DexcomSecurity::authenticate()
+{
+    //Send AuthRequestTxMessage
+    std::string authRequestTxMessage = reinterpret_cast<char *>((uint8_t[9]){0x01, 0x19, 0xF3, 0x89, 0xF8, 0xB7, 0x58, 0x41, 0x33 });  //0x02                 // 10byte, first byte = opcode (fix), [1] - [8] random bytes as challenge for the transmitter to encrypt,
+    authRequestTxMessage += DexcomConnection::usingAlternateChannel() ? 0x01 : 0x02;                                                        // last byte 0x02 = normal bt channel, 0x01 alternative bt channel
+    DexcomConnection::AuthSendValue(authRequestTxMessage);
+
+    //Recv AuthChallengeRXMessage
+    std::string authChallengeRxMessage = DexcomConnection::AuthWaitToReceiveValue();                                                      // Wait until we received data from the notify callback.
+    if ((authChallengeRxMessage.length() != 17) || (authChallengeRxMessage[0] != 0x03))
+    {
+        SerialPrintln(ERROR, "Error wrong length or opcode!");
+        return false;
+    }
+    std::string tokenHash = "";
+    std::string challenge = "";
+    for(int i = 1; i < authChallengeRxMessage.length(); i++)                                                            // Start with 1 to skip opcode.
+    {
+        if(i < 9)
+            tokenHash += authChallengeRxMessage[i];
+        else
+            challenge += authChallengeRxMessage[i];
+    }
+    //Here we could check if the tokenHash is the encrypted 8 bytes from the authRequestTxMessage ([1] to [8]);
+    //To check if the Transmitter is a valid dexcom transmitter (because only the correct one should know the ID).
+
+    //Send AuthChallengeTXMessage
+    std::string hash = calculateHash(challenge, DexcomConnection::getTransmitterID());                                                         // Calculate the hash from the random 8 bytes the transmitter send us as a challenge.
+    std::string authChallengeTXMessage = {0x04};                                                                        // opcode
+    authChallengeTXMessage += hash;                                                                                     // in total 9 byte.
+    DexcomConnection::AuthSendValue(authChallengeTXMessage);
+
+    //Recv AuthStatusRXMessage
+    std::string authStatusRXMessage = DexcomConnection::AuthWaitToReceiveValue();                                                         // Response { 0x05, 0x01 = authenticated / 0x02 = not authenticated, 0x01 = no bonding, 0x02 bonding
+    if(authStatusRXMessage.length() == 3 && authStatusRXMessage[1] == 1)                                                // correct response is 0x05 0x01 0x02
+    {
+        SerialPrintln(DEBUG, "Authenticated!");
+        bonding = authStatusRXMessage[2] != 0x01;
+        return true;
+    }
+    else
+        SerialPrintln(ERROR, "Authenticated FAILED!");
+    return false;
+}
+
+/**
+ * Calculates the Hash for the given data.
+ */
+std::string DexcomSecurity::calculateHash(std::string data, std::string id)
+{
+    if (data.length() != 8)
+    {
+        SerialPrintln(ERROR, "cannot hash");
+        return NULL;
+    }
+
+    data = data + data;                                                                                                 // Use double the data to get 16 byte
+    std::string hash = encrypt(data, id);
+    return hash.substr(0, 8);                                                                                           // Only use the first 8 byte of the hash (ciphertext)
+}
+
+
+/**
+ * Encrypt using AES 182 ecb (Electronic Code Book Mode).
+ */
+std::string DexcomSecurity::encrypt(std::string buffer, std::string id)
+{
+    mbedtls_aes_context aes;
+
+    std::string key = "00" + id + "00" + id;                                                                            // The key (that also used the transmitter) for the encryption.
+    unsigned char output[16];
+
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, (const unsigned char *)key.c_str(), strlen(key.c_str()) * 8);
+    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, (const unsigned char *)buffer.c_str(), output);
+    mbedtls_aes_free(&aes);
+
+    std::string returnVal = "";
+    for (int i = 0; i < 16; i++)                                                                                        // Convert unsigned char array to string.
+    {
+        returnVal += output[i];
+    }
+    return returnVal;
+}
 
 void DexcomSecurity::forceRebondingEnable() { forceRebonding = true; }
 void DexcomSecurity::forceRebondingDisable() { forceRebonding = false; }
@@ -184,7 +268,7 @@ bool DexcomConnection::lastConnectionWasError() { return errorLastConnection; }
 
 void DexcomConnection::useAlternateChannel() { alternateChannel = true; }
 void DexcomConnection::usePrimaryChannel() { alternateChannel = false; }
-
+bool DexcomConnection::usingAlternateChannel() { return alternateChannel; }
 
 void DexcomConnection::onConnect(BLEClient* bleClient) 
 {

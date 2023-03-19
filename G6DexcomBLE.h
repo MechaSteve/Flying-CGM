@@ -14,6 +14,7 @@
 #include <Arduino.h>
 #include <Esp.h>
 #include "rom/crc.h"
+#include "mbedtls/aes.h"
 #include "BLEDevice.h"
 #include "BLEScan.h"
 #include "DebugHelper.h"
@@ -48,6 +49,9 @@ class DexcomSecurity : public BLESecurityCallbacks
         void onAuthenticationComplete(esp_ble_auth_cmpl_t auth_cmpl);
         static bool requestBond();
         static void setupBonding();
+    private:
+        static std::string calculateHash(std::string data, std::string id);
+        static std::string encrypt(std::string buffer, std::string id);
 };
 
 class DexcomConnection : public BLEClientCallbacks
@@ -78,6 +82,7 @@ class DexcomConnection : public BLEClientCallbacks
         static std::string getTransmitterID();
         static void useAlternateChannel();
         static void usePrimaryChannel();
+        static bool usingAlternateChannel();
 
         static bool find();
         static void advertisedDeviceCallback(BLEAdvertisedDevice advertisedDevice);

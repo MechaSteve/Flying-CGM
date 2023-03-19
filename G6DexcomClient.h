@@ -14,8 +14,6 @@
 
 #include <Arduino.h>
 #include <Esp.h>
-#include "rom/crc.h"
-#include "mbedtls/aes.h"
 #include "DebugHelper.h"
 #include "G6DexcomBLE.h"
 
@@ -40,8 +38,6 @@ class DexcomClient
         static std::string backfillStream;
         static int backfillExpectedSequence;
         static std::string CRC_16_XMODEM(std::string message);
-        static std::string encrypt(std::string buffer, std::string id);
-        static std::string calculateHash(std::string data, std::string id);
         static void printSavedGlucose();
 };
 

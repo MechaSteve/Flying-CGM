@@ -260,7 +260,7 @@ void run()
     if(!DexcomConnection::readDeviceInformations())                                                                 // Read the general device informations like model no. and manufacturer.
         SerialPrintln(DEBUG, "Error while reading device informations!");                                               // If empty strings are read from the device information Characteristic, try reading device information after successfully authenticated. 
 
-    if(!authenticate())                                                                                                 // Authenticate with the transmitter.
+    if(!DexcomSecurity::authenticate())                                                                                                 // Authenticate with the transmitter.
         ExitState("Error while trying to authenticate!");
     
     if(!DexcomSecurity::requestBond())                                                                                                  // Enable encryption and requesting bonding.
