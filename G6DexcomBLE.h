@@ -41,6 +41,7 @@ class DexcomSecurity : public BLESecurityCallbacks
         static bool authenticate();
         static void forceRebondingEnable();
         static void forceRebondingDisable();
+        static bool forceRebondingEnabled();
         static bool isBonded();
         uint32_t onPassKeyRequest();
         void onPassKeyNotify(uint32_t pass_key);

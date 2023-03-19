@@ -24,6 +24,21 @@ std::string DexcomClient::CRC_16_XMODEM(std::string message)
     return crcString;
 }
 
+/**
+ * Returns true if invalid data was found / missing values or not x values are available.
+ */
+bool DexcomClient::needBackfill()
+{
+    if (DexcomConnection::lastConnectionWasError()) return true;                                                                            // Also request backfill if last time was an error (maybe error while backfilling so missed some data).
+    
+    for(int i = 0; i < saveLastXValues; i++)
+    {
+        if(glucoseValues[i] < 10 || glucoseValues[i] > 600)                                                             // This includes 0 values from initialisation.
+            return true;
+    }
+    return false; // no reason to backfill
+}
+
 
 uint32_t transmitterStartTime = 0;
 /**

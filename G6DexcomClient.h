@@ -23,6 +23,7 @@ class DexcomClient
 {
     public:
         static bool findAndConnect();
+        static bool needBackfill();
         static bool readTimeMessage();
         static bool readBatteryStatus();
         static bool readGlucose();

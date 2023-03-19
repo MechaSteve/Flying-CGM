@@ -159,6 +159,7 @@ std::string DexcomSecurity::encrypt(std::string buffer, std::string id)
 
 void DexcomSecurity::forceRebondingEnable() { forceRebonding = true; }
 void DexcomSecurity::forceRebondingDisable() { forceRebonding = false; }
+bool DexcomSecurity::forceRebondingEnabled() { return forceRebonding; }
 bool DexcomSecurity::isBonded() { return bondingFinished; }
 
 
@@ -444,7 +445,7 @@ std::string DexcomConnection::ControlWaitToReceiveValue()
 }
 
 /**
- * Create a BLE scanner and asyncronously look for a dexcom transmitter with the correct ID
+ * Create a BLE scanner and block while looking for a dexcom transmitter with the correct ID
 */
 bool DexcomConnection::find() 
 {
