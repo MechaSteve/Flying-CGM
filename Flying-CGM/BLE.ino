@@ -8,7 +8,7 @@
 
 #include "BLEDevice.h"
 #include "BLEScan.h"
-#include "Output.h"
+#include "DebugHelper.h"
 
 // Byte values for the notification / indication.
 const uint8_t bothOff[]        = {0x0, 0x0};

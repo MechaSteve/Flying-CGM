@@ -7,7 +7,7 @@
  */
 
 #include "BLEDevice.h"
-#include "Output.h"
+#include "DebugHelper.h"
 
 /**
  * Wrapper function to send data to the authentication characteristic.

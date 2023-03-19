@@ -38,7 +38,7 @@ static BLEUUID     firmwareUUID("2A26"); // READ
 // 3) CallBack from scan to MyAdvertisedDeviceCallbacks()::OnResult() matches dexcom
 //   3.1) Stop Scan   <<Static function>>
 //   3.2) myDevice = new BLEAdvertisedDevice(advertisedDevice);
-// 4) setup_bonding();  <<Static function>>
+// 4) setupBonding();  <<Static function>>
 // 5) connectToTransmitter() <<requries myDevice and UUID defines>>
 //    5.1) create client, register callbacks and connect
 //    5.2) get and save services based on UUIDs
@@ -137,7 +137,7 @@ bool DexcomSecurity::requestBond()
         if(forceRebonding) {
           // Enable bonding after successful auth and before sending bond request to transmitter.
           SerialPrintln(DEBUG, "setup_bd_st");
-          setup_bonding();
+          setupBonding();
           SerialPrintln(DEBUG, "setup_bd_ed");
         }
 

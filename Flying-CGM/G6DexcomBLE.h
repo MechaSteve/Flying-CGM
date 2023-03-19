@@ -122,10 +122,4 @@ class DexcomConnection : public BLEClientCallbacks
 };
 
 
-/**
- * Enables BLE bonding.
- */
-void setup_bonding();
-
-
 #endif /* G6DEXCOMBLE_H */

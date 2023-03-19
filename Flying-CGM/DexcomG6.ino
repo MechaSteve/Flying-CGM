@@ -7,7 +7,7 @@
  */
 
 #include "mbedtls/aes.h"
-#include "Output.h"
+#include "DebugHelper.h"
 
 static std::string backfillStream = "";
 static int backfillExpectedSequence = 1;
@@ -76,7 +76,7 @@ bool requestBond()
         if(force_rebonding) {
           // Enable bonding after successful auth and before sending bond request to transmitter.
           SerialPrintln(DEBUG, "setup_bd_st");
-          setup_bonding();
+          DexcomSecurity::setupBonding();
           SerialPrintln(DEBUG, "setup_bd_ed");
         }
 
