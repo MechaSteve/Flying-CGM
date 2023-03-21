@@ -69,47 +69,44 @@ static BLEUUID     firmwareUUID("2A26"); // READ
  * The Dexcom Reciever is connected (serivces have been found and pointers saved)
 */
 bool DexcomSecurity::bonding = false;
-bool DexcomSecurity::bondingFinished = false;
+volatile bool DexcomSecurity::bondingFinished = false;
 bool DexcomSecurity::forceRebonding = false;
 
 bool DexcomSecurity::authenticate()
 {
     //Send AuthRequestTxMessage
-    std::string authRequestTxMessage = reinterpret_cast<char *>((uint8_t[9]){0x01, 0x19, 0xF3, 0x89, 0xF8, 0xB7, 0x58, 0x41, 0x33 });  //0x02                 // 10byte, first byte = opcode (fix), [1] - [8] random bytes as challenge for the transmitter to encrypt,
-    authRequestTxMessage += DexcomConnection::usingAlternateChannel() ? 0x01 : 0x02;                                                        // last byte 0x02 = normal bt channel, 0x01 alternative bt channel
-    DexcomConnection::AuthSendValue(authRequestTxMessage);
+    uint8_t authRequestTxBuffer[10] = {0x01, 0x19, 0xF3, 0x89, 0xF8, 0xB7, 0x58, 0x41, 0x33, 0 };  //0x02                 // 10byte, first byte = opcode (fix), [1] - [8] random bytes as challenge for the transmitter to encrypt,
+    authRequestTxBuffer[9] = DexcomConnection::usingAlternateChannel() ? 0x01 : 0x02;                                                        // last byte 0x02 = normal bt channel, 0x01 alternative bt channel
+    DexcomConnection::AuthSendValue(authRequestTxBuffer, 10);
 
     //Recv AuthChallengeRXMessage
-    std::string authChallengeRxMessage = DexcomConnection::AuthWaitToReceiveValue();                                                      // Wait until we received data from the notify callback.
-    if ((authChallengeRxMessage.length() != 17) || (authChallengeRxMessage[0] != 0x03))
+    uint8_t authChallengeBuffer[20];
+    size_t authChallengeSize = DexcomConnection::AuthWaitToReceiveValue(authChallengeBuffer, 20);                         // Wait until we received data from the notify callback.
+    if ((authChallengeSize != 17) || (authChallengeBuffer[0] != 0x03))
     {
         SerialPrintln(ERROR, "Error wrong length or opcode!");
         return false;
     }
-    std::string tokenHash = "";
-    std::string challenge = "";
-    for(int i = 1; i < authChallengeRxMessage.length(); i++)                                                            // Start with 1 to skip opcode.
-    {
-        if(i < 9)
-            tokenHash += authChallengeRxMessage[i];
-        else
-            challenge += authChallengeRxMessage[i];
-    }
+    uint8_t tokenHash[8];
+    uint64_t challenge;
+    memcpy(tokenHash, &authChallengeBuffer[1], 8);               // Start with 1 to skip opcode.
+    memcpy(&challenge, &authChallengeBuffer[9], 8);             // store 8 bytes in a uint64_t
     //Here we could check if the tokenHash is the encrypted 8 bytes from the authRequestTxMessage ([1] to [8]);
     //To check if the Transmitter is a valid dexcom transmitter (because only the correct one should know the ID).
 
     //Send AuthChallengeTXMessage
-    std::string hash = calculateHash(challenge, DexcomConnection::getTransmitterID());                                                         // Calculate the hash from the random 8 bytes the transmitter send us as a challenge.
-    std::string authChallengeTXMessage = {0x04};                                                                        // opcode
-    authChallengeTXMessage += hash;                                                                                     // in total 9 byte.
-    DexcomConnection::AuthSendValue(authChallengeTXMessage);
+    uint64_t hash = calculateHash(challenge, DexcomConnection::getTransmitterID());                                                         // Calculate the hash from the random 8 bytes the transmitter send us as a challenge.
+    uint8_t authChallengeTXMessage[9] = {0x04, 0,0,0,0, 0,0,0,0};                                                                        // opcode
+    memcpy(&authChallengeTXMessage[1], &hash, 8);                                                                                     // in total 9 byte.
+    DexcomConnection::AuthSendValue(authChallengeTXMessage, 9);
 
     //Recv AuthStatusRXMessage
-    std::string authStatusRXMessage = DexcomConnection::AuthWaitToReceiveValue();                                                         // Response { 0x05, 0x01 = authenticated / 0x02 = not authenticated, 0x01 = no bonding, 0x02 bonding
-    if(authStatusRXMessage.length() == 3 && authStatusRXMessage[1] == 1)                                                // correct response is 0x05 0x01 0x02
+    uint8_t authStatusBuffer[8];
+    size_t authStatusSize = DexcomConnection::AuthWaitToReceiveValue(authStatusBuffer, 8);                              // Response { 0x05, 0x01 = authenticated / 0x02 = not authenticated, 0x01 = no bonding, 0x02 bonding
+    if(authStatusSize == 3 && authStatusBuffer[1] == 1)                                                // correct response is 0x05 0x01 0x02
     {
         SerialPrintln(DEBUG, "Authenticated!");
-        bonding = authStatusRXMessage[2] != 0x01;
+        bonding = authStatusBuffer[2] != 0x01;
         return true;
     }
     else
@@ -118,43 +115,35 @@ bool DexcomSecurity::authenticate()
 }
 
 /**
- * Calculates the Hash for the given data.
+ * Calculates the 8 byte Hash for the given data.
  */
-std::string DexcomSecurity::calculateHash(std::string data, std::string id)
+uint64_t DexcomSecurity::calculateHash(uint64_t data, std::string id)
 {
-    if (data.length() != 8)
-    {
-        SerialPrintln(ERROR, "cannot hash");
-        return NULL;
-    }
+    uint64_t returnValue = 0;
+    //data = data + data;  //done as a string concat
+    uint8_t doubleData[16], hashBuffer[16];                                         // Use double the data to get 16 byte
+    memcpy(&doubleData[0], &data, 8);
+    memcpy(&doubleData[8], &data, 8);
+    encrypt(doubleData, id, hashBuffer);
+    memcpy(&returnValue, &hashBuffer[0], 8);                                         // Only use the first 8 byte of the hash (ciphertext)
+    return returnValue;                                                                                           
 
-    data = data + data;                                                                                                 // Use double the data to get 16 byte
-    std::string hash = encrypt(data, id);
-    return hash.substr(0, 8);                                                                                           // Only use the first 8 byte of the hash (ciphertext)
 }
 
 
 /**
  * Encrypt using AES 182 ecb (Electronic Code Book Mode).
  */
-std::string DexcomSecurity::encrypt(std::string buffer, std::string id)
+void DexcomSecurity::encrypt(uint8_t* buffer, std::string id, uint8_t* output)
 {
     mbedtls_aes_context aes;
 
     std::string key = "00" + id + "00" + id;                                                                            // The key (that also used the transmitter) for the encryption.
-    unsigned char output[16];
 
     mbedtls_aes_init(&aes);
     mbedtls_aes_setkey_enc(&aes, (const unsigned char *)key.c_str(), strlen(key.c_str()) * 8);
-    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, (const unsigned char *)buffer.c_str(), output);
+    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, buffer, output);
     mbedtls_aes_free(&aes);
-
-    std::string returnVal = "";
-    for (int i = 0; i < 16; i++)                                                                                        // Convert unsigned char array to string.
-    {
-        returnVal += output[i];
-    }
-    return returnVal;
 }
 
 void DexcomSecurity::forceRebondingEnable() { forceRebonding = true; }
@@ -228,12 +217,12 @@ bool DexcomSecurity::requestBond()
 
         SerialPrintln(DEBUG, "Sending Bond Request.");
         //Send KeepAliveTxMessage
-        std::string keepAliveTxMessage = {0x06, 0x19};                                                                  // Opcode 2 byte = 0x06, 25 as hex (0x19)
-        DexcomConnection::AuthSendValue(keepAliveTxMessage);
+        uint8_t keepAliveTxMessage[2] = {0x06, 0x19};                                                                  // Opcode 2 byte = 0x06, 25 as hex (0x19)
+        DexcomConnection::AuthSendValue(keepAliveTxMessage, 2);
         SerialPrintln(DEBUG, "snd_kp_al");
         //Send BondRequestTxMessage
-        std::string bondRequestTxMessage = {0x07};                                                                      // Send bond command.
-        DexcomConnection::AuthSendValue(bondRequestTxMessage);
+        uint8_t bondRequestTxMessage[1] = {0x07};                                                                      // Send bond command.
+        DexcomConnection::AuthSendValue(bondRequestTxMessage, 1);
         SerialPrintln(DEBUG, "snd_bd_rq");
         //Wait for bonding to finish
         SerialPrintln(DEBUG, "Waiting for bond.");
@@ -249,13 +238,30 @@ bool DexcomSecurity::requestBond()
 /**
  * The Dexcom Reciever is connected (serivces have been found and pointers saved)
 */
-bool DexcomConnection::connected = false;
+volatile bool DexcomConnection::connected = false;
 bool DexcomConnection::errorConnection = false;
-bool DexcomConnection::errorLastConnection = false;
+volatile bool DexcomConnection::errorLastConnection = false;
+bool DexcomConnection::alternateChannel = false;        // Option to use the alternate data channel (true if using with pump)
+
 unsigned long DexcomConnection::disconnectTime = 0;
-std::string AuthCallbackResponse = "";
-std::string BackfillCallbackResponse = "";
-std::string ControlCallbackResponse = "";
+uint8_t DexcomConnection::AuthResponseBuffer[32];
+volatile size_t DexcomConnection::AuthResponseLength = 0;
+uint8_t DexcomConnection::BackfillResponseBuffer[32];
+volatile size_t DexcomConnection::BackfillResponseLength = 0;
+uint8_t DexcomConnection::ControlResponseBuffer[32];
+volatile size_t DexcomConnection::ControlResponseLength = 0;
+std::string DexcomConnection::transmitterID = "8XC0FT";       // Static storage of one transmitter ID (only the last two characters matter)
+
+
+BLERemoteCharacteristic* DexcomConnection::pRemoteCommunication = NULL;
+BLERemoteCharacteristic* DexcomConnection::pRemoteControl = NULL;
+BLERemoteCharacteristic* DexcomConnection::pRemoteAuthentication = NULL;
+BLERemoteCharacteristic* DexcomConnection::pRemoteBackfill = NULL;
+BLERemoteCharacteristic* DexcomConnection::pRemoteManufacturer = NULL;            // Uses deviceInformationServiceUUID
+BLERemoteCharacteristic* DexcomConnection::pRemoteModel = NULL;                   // Uses deviceInformationServiceUUID
+BLERemoteCharacteristic* DexcomConnection::pRemoteFirmware = NULL;                // Uses deviceInformationServiceUUID
+
+BLEScan* DexcomConnection::pBLEScan = NULL;                                                           // The scanner used to look for the device
 BLEAdvertisedDevice* DexcomConnection::myDevice = NULL;                           // The remote device (transmitter) found by the scan and set by scan callback function.
 BLEClient* DexcomConnection::pClient = NULL;                                      // Is global so we can disconnect everywhere when an error occured.
 
@@ -322,7 +328,8 @@ void DexcomConnection::indicateControlCallback(BLERemoteCharacteristic* pBLERemo
     SerialPrint(DEBUG, length, DEC);
     SerialPrintln(DEBUG, " byte data: ");
     printHexArray(pData, length);
-    ControlCallbackResponse = uint8ToString(pData, length);
+    ControlResponseLength = length;
+    memcpy(&ControlResponseBuffer[0], pData, length > 32 ? 32 : length);
 }
 
 void DexcomConnection::indicateAuthCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) 
@@ -331,7 +338,8 @@ void DexcomConnection::indicateAuthCallback(BLERemoteCharacteristic* pBLERemoteC
     SerialPrint(DEBUG, length, DEC);
     SerialPrintln(DEBUG, " byte data: ");
     printHexArray(pData, length);
-    AuthCallbackResponse = uint8ToString(pData, length);
+    AuthResponseLength = length;
+    memcpy(&AuthResponseBuffer[0], pData, length > 32 ? 32 : length);
 }
 
 void DexcomConnection::notifyBackfillCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) 
@@ -340,7 +348,8 @@ void DexcomConnection::notifyBackfillCallback(BLERemoteCharacteristic* pBLERemot
     SerialPrint(DEBUG, length, DEC);
     SerialPrintln(DEBUG, " byte data: ");
     printHexArray(pData, length);
-    BackfillCallbackResponse = uint8ToString(pData, length);
+    BackfillResponseLength = length;
+    memcpy(&BackfillResponseBuffer[0], pData, length > 32 ? 32 : length);
 }
 
 /**
@@ -348,6 +357,8 @@ void DexcomConnection::notifyBackfillCallback(BLERemoteCharacteristic* pBLERemot
  */
 bool DexcomConnection::readDeviceInformations()
 {
+    
+
     if(!pRemoteManufacturer->canRead())                                                                                 // Check if the characteristic is readable.
         return false;
     SerialPrint(DEBUG, "The Manufacturer value was: ");
@@ -368,87 +379,87 @@ bool DexcomConnection::readDeviceInformations()
 /**
  * Wrapper function to send data to the authentication characteristic.
  */
-bool DexcomConnection::AuthSendValue(std::string value)
+bool DexcomConnection::AuthSendValue(uint8_t* pData, size_t length)
 {
-    AuthCallbackResponse = "";                                                                                          // Reset to invalid because we will write to the characteristic and must wait until new data arrived from the notify callback.
-    return writeValue("AuthSendValue", pRemoteAuthentication, value);
+    AuthResponseLength = 0;                                                                                          // Reset to invalid because we will write to the characteristic and must wait until new data arrived from the notify callback.
+    return writeValue("AuthSendValue", pRemoteAuthentication, pData, length);
 }
 
 
 /**
  * Barrier to wait until new data arrived through the notify callback.
  */
-std::string DexcomConnection::AuthWaitToReceiveValue()
+size_t DexcomConnection::AuthWaitToReceiveValue(uint8_t* pData, size_t max_length)
 {
     while(connected)                                                                                                    // Only loop until we lost connection.
     {
-        if(AuthCallbackResponse != "")
+        if(AuthResponseLength != 0)
         {
-            std::string returnValue = AuthCallbackResponse;                                                             // Save the new value.
-            AuthCallbackResponse = "";                                                                                  // Reset because we handled the new data.
-            //SerialPrint(DEBUG, "AuthWaitToReceiveValue = ");
-            //printHexString(returnValue);
-            return returnValue;
+            size_t returnSize = AuthResponseLength > max_length ? max_length : AuthResponseLength;
+            memcpy(pData, &AuthResponseBuffer[0], returnSize);                                                      // Save the new value.
+            AuthResponseLength = 0;                                                                                  // Reset because we handled the new data.
+            return returnSize;
         }
     }
     commFault("Error timeout in AuthWaitToReceiveValue");                                                               // The transmitter disconnected so exit.
-    return "";
+    return 0;
 }
 
 
 /**
  * Barrier to wait until new data arrived through the notify callback.
  */
-std::string DexcomConnection::BackfillWaitToReceiveValue()
+size_t DexcomConnection::BackfillWaitToReceiveValue(uint8_t* pData, size_t max_length)
 {
     while(connected)                                                                                                    // Only loop until we lost connection.
     {
-        if(BackfillCallbackResponse != "")
+        if(BackfillResponseLength != 0)
         {
-            std::string returnValue = BackfillCallbackResponse;                                                             // Save the new value.
-            BackfillCallbackResponse = "";  
-            return returnValue;
+            size_t returnSize = BackfillResponseLength > max_length ? max_length : BackfillResponseLength;
+            memcpy(pData, &BackfillResponseBuffer[0], returnSize);                                                      // Save the new value.
+            BackfillResponseLength = 0;                                                                                  // Reset because we handled the new data.
+            return returnSize;
         }
     }
     commFault("Error timeout in BackfillWaitToReceiveValue");                                                               // The transmitter disconnected so exit.
-    return "";
+    return 0;
 }
 
 /**
  * Wrapper function to send data to the control characteristic.
  */
-bool DexcomConnection::ControlSendValue(std::string value)
+bool DexcomConnection::ControlSendValue(uint8_t* pData, size_t length)
 {
-    ControlCallbackResponse = "";                                                                                          
-    return writeValue("ControlSendValue", pRemoteControl, value);
+    ControlResponseLength = 0;                                                                                          
+    return writeValue("ControlSendValue", pRemoteControl, pData, length);
 }
 
 
 /**
  * Barrier to wait until new data arrived through the notify callback.
  */
-std::string DexcomConnection::ControlWaitToReceiveValue()
+size_t DexcomConnection::ControlWaitToReceiveValue(uint8_t* pData, size_t max_length)
 {
     while(connected)                                                                                                    // Only loop until we lost connection.
     {
-        if(ControlCallbackResponse != "")
+        if(ControlResponseLength != 0)
         {
-            std::string returnValue = ControlCallbackResponse;                                                          // Save the new value.
-            ControlCallbackResponse = "";                                                                               // Reset because we handled the new data.
-            //SerialPrint(DEBUG, "ControlWaitToReceiveValue = ");
-            //printHexString(returnValue);
-            return returnValue;
+            size_t returnSize = ControlResponseLength > max_length ? max_length : ControlResponseLength;
+            memcpy(pData, &ControlResponseBuffer[0], returnSize);                                                      // Save the new value.
+            ControlResponseLength = 0;                                                                                  // Reset because we handled the new data.
+            return returnSize;
         }
     }
     commFault("Error timeout in ControlWaitToReceiveValue");                                                            // The transmitter disconnected so exit.
-    return "";
+    return 0;
 }
 
 /**
  * Create a BLE scanner and block while looking for a dexcom transmitter with the correct ID
 */
-bool DexcomConnection::find() 
+void DexcomConnection::find() 
 {
+
     BLEDevice::init("");                                                                                    // Possible source of error if we cant connect to the transmitter.
 
     pBLEScan = BLEDevice::getScan();                                                                        // Retrieve a Scanner.
@@ -488,6 +499,7 @@ bool DexcomConnection::connect()
     SerialPrintln(DEBUG, " - Created client");
 
     pClient->setClientCallbacks(new DexcomConnection());                                                                // Callbacks for onConnect() onDisconnect()
+    SerialPrintln(DEBUG, " - Callbacks assigned attempting connection to myDevice");
 
     // Connect to the remote BLE Server.
     if(!pClient->connect(myDevice))                                                                                     // Notice from the example: if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
@@ -515,15 +527,19 @@ bool DexcomConnection::connect()
     SerialPrintln(DEBUG, " - Found our services");
 
     // Obtain a reference to the characteristic in the service of the remote BLE server.
-    getCharacteristic(&pRemoteCommunication, pRemoteService, communicationUUID);
-    getCharacteristic(&pRemoteControl, pRemoteService, controlUUID);
-    getCharacteristic(&pRemoteAuthentication, pRemoteService, authenticationUUID);
-    getCharacteristic(&pRemoteBackfill, pRemoteService, backfillUUID);
+    SerialPrintln(DEBUG, getCharacteristic(&pRemoteCommunication, pRemoteService, communicationUUID)    ? "Found Communication Char."   : "Did not find Communication Char.");
+    SerialPrintln(DEBUG, getCharacteristic(&pRemoteControl, pRemoteService, controlUUID)                ? "Found Control Char."         : "Did not find Control Char.");
+    SerialPrintln(DEBUG, getCharacteristic(&pRemoteAuthentication, pRemoteService, authenticationUUID)  ? "Found Authentication Char."  : "Did not find Authentication Char.");
+    SerialPrintln(DEBUG, getCharacteristic(&pRemoteBackfill, pRemoteService, backfillUUID)              ? "Found Backfill Char."        : "Did not find Backfill Char.");
 
-    getCharacteristic(&pRemoteManufacturer, pRemoteServiceInfos, manufacturerUUID);
-    getCharacteristic(&pRemoteModel, pRemoteServiceInfos, modelUUID);
-    getCharacteristic(&pRemoteFirmware, pRemoteServiceInfos, firmwareUUID);
+    SerialPrintln(DEBUG, getCharacteristic(&pRemoteManufacturer, pRemoteServiceInfos, manufacturerUUID) ? "Found Manufacturer Char."    : "Did not find Manufacturer Char.");
+    SerialPrintln(DEBUG, getCharacteristic(&pRemoteModel, pRemoteServiceInfos, modelUUID)               ? "Found Model Char."           : "Did not find Model Char.");
+    SerialPrintln(DEBUG, getCharacteristic(&pRemoteFirmware, pRemoteServiceInfos, firmwareUUID)         ? "Found Firmware Char."        : "Did not find Firmware Char.");
     SerialPrintln(DEBUG, " - Found our characteristics");
+
+    
+    SerialPrint(DEBUG, "The Manufacturer value was: ");
+    SerialPrintln(DEBUG, pRemoteManufacturer->readValue().c_str());                                                     // Read the value of the device information characteristics.
 
     forceRegisterNotificationAndIndication(indicateAuthCallback, pRemoteAuthentication, false);                         // Needed to work with G6 Plus (and G6) sensor. The command below only works for G6 (81...) transmitter.
     //registerForIndication(indicateAuthCallback, pRemoteAuthentication);                                               // We only register for the Auth characteristic. When we are authorised we can register for the other characteristics.
@@ -537,8 +553,8 @@ bool DexcomConnection::connect()
 bool DexcomConnection::disconnect()
 { 
     SerialPrintln(DEBUG, "Initiating a disconnect.");
-    std::string disconnectTxMessage = {0x09}; 
-    ControlSendValue(disconnectTxMessage);
+    uint8_t disconnectTxMessage[1] = {0x09}; 
+    ControlSendValue(disconnectTxMessage, 1);
     while(connected);                                                                                                   // Wait until onDisconnect callback was called and connected status flipped.
     return true;
 }
@@ -566,6 +582,12 @@ bool DexcomConnection::backfillRegister()
     return false;
 }
 
+bool DexcomConnection::backfillRegister(notify_callback callbackFunction) 
+{
+    if( pRemoteControl != nullptr) { return forceRegisterNotificationAndIndication(callbackFunction, pRemoteBackfill, false); }
+    return false;
+}
+
 bool DexcomConnection::controlRegister() 
 {
     if( pRemoteControl != nullptr) { return forceRegisterNotificationAndIndication(indicateControlCallback, pRemoteControl, false); }
@@ -584,17 +606,16 @@ bool DexcomConnection::controlRegister()
 /**
  * Write a string to the given characteristic.
  */
-bool DexcomConnection::writeValue(std::string caller, BLERemoteCharacteristic *pRemoteCharacteristic, std::string data)
+bool DexcomConnection::writeValue(std::string caller, BLERemoteCharacteristic *pRemoteCharacteristic, uint8_t* pData, size_t length)
 {
     SerialPrint(DEBUG, caller.c_str());
     SerialPrint(DEBUG, " - Writing Data = ");
-    printHexString(data);
+    printHexArray(pData, length);
     //BLERemoteCharacteristic: writeValue(std::string newValue, bool response = false);                                 //Not possible to send 0x00 within a string because this method converts std::string to c string using c_str()
     //pRemoteCharacteristic->writeValue(data, true);    /* important must be true so we don't flood the transmitter */  //And a c string ends with a 0x00 so not the full message gets send. (Only the part before the first 0x00 gets send)
     
-    uint8_t* pdata = reinterpret_cast<uint8_t*>(&data[0]);                                                              // convert std::string to uint8_t pointer
     /* important must be true so we don't flood the transmitter */
-    pRemoteCharacteristic->writeValue(pdata, data.length(), true);                                                      // true = wait for response (acknowledgment) from the transmitter.
+    pRemoteCharacteristic->writeValue(pData, length, true);                                                      // true = wait for response (acknowledgment) from the transmitter.
     return true;
 }
 

@@ -35,7 +35,15 @@ typedef enum
 
 static OutputLevel outputLevel = FULL;                    /* Change to your output level  */                            // Set this to NONE if no serial connection is used.
 
-template<typename... Args> void SerialPrintf(int type, const char * f, Args... args);
+
+template<typename... Args> 
+void SerialPrintf(int type, const char * f, Args... args)                                    // Use C++11 variadic templates
+{
+    if(type >= outputLevel)
+        Serial.printf(f, args...);
+    else
+        delay(10);                                                                                                      // Use a delay as compensation for serial.print()
+}
 
 /** 
  * Wrapper functions for Serial.print(..) to allow filtering and setting an output log level.

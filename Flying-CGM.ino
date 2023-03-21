@@ -203,16 +203,6 @@ void run()
         else { SerialPrintln(DEBUG, "We are now connected to the transmitter."); }
     }
 
-    // Read the general device informations like model no. and manufacturer.
-
-    if (!error_current_connection) {
-        
-        Serial.println("try to read device information");
-        error_current_connection = !DexcomConnection::readDeviceInformations();
-        if (error_current_connection) { ExitState("Error while reading device informations!"); }    // If empty strings are read from the device information Characteristic, try reading device information after successfully authenticated.
-        else { SerialPrintln(DEBUG, "Successfully read device instructions."); }
-    }
-
     // Authenticate with the transmitter.
     if (!error_current_connection) {
         
@@ -225,13 +215,23 @@ void run()
     // Enable encryption and requesting bonding.
     if (!error_current_connection) {
         
-        Serial.println("try to authenticate");
+        Serial.println("try to bond");
         error_current_connection = !DexcomSecurity::requestBond();
         if (error_current_connection) { ExitState("Error while trying to bond!"); }     
         else { SerialPrintln(DEBUG, "Successfully bonded."); }
     }
 
-    // Enable encryption and requesting bonding.
+    // Read the general device informations like model no. and manufacturer.
+
+    if (!error_current_connection) {
+        
+        Serial.println("try to read device information");
+        error_current_connection = !DexcomConnection::readDeviceInformations();
+        if (error_current_connection) { ExitState("Error while reading device informations!"); }    // If empty strings are read from the device information Characteristic, try reading device information after successfully authenticated.
+        else { SerialPrintln(DEBUG, "Successfully read device instructions."); }
+    }
+
+    // Register the control channel callback.
     if (!error_current_connection) {
         
         Serial.println("try to register control callback");

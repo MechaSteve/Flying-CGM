@@ -12,14 +12,6 @@
 #include "DebugHelper.h"
 
 
-template<typename... Args> void SerialPrintf(int type, const char * f, Args... args)                                    // Use C++11 variadic templates
-{
-    if(type >= outputLevel)
-        Serial.printf(f, args...);
-    else
-        delay(10);                                                                                                      // Use a delay as compensation for serial.print()
-}
-
 void SerialPrint(OutputType type, const char * text)
 {
     if(type >= outputLevel)                                                                     // Only print if OutputType is more specific than OutputLevel
@@ -29,14 +21,6 @@ void SerialPrint(OutputType type, uint8_t value, int mode)
 {
     if(type >= outputLevel)
         Serial.print(value, mode);
-}
-
-template<typename... Args> void SerialPrintf(int type, const char * f, Args... args)            // Use C++11 variadic templates
-{
-    if(type >= outputLevel)
-        Serial.printf(f, args...);
-    else
-        delay(10);                                                                              // Use a delay as compensation for serial.print()
 }
 
 void SerialPrintln(OutputType type)

@@ -21,6 +21,11 @@
 
 class DexcomClient
 {
+        static uint16_t currentBG;
+        static int saveLastXValues;
+        static uint16_t glucoseValues[72];
+        static std::string backfillStream;
+        static int backfillExpectedSequence;
     public:
         static bool findAndConnect();
         static bool needBackfill();
@@ -33,12 +38,7 @@ class DexcomClient
         static bool saveBackfill(std::string backfillParseMessage);
         static void parseBackfill(std::string data);
     private:
-        static uint16_t currentBG;
-        static int saveLastXValues;
-        static uint16_t glucoseValues[72];
-        static std::string backfillStream;
-        static int backfillExpectedSequence;
-        static std::string CRC_16_XMODEM(std::string message);
+        static uint16_t CRC_16_XMODEM(uint8_t* pData, size_t length);
         static void printSavedGlucose();
 };
 
