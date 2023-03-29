@@ -17,7 +17,7 @@ int DexcomClient::backfillExpectedSequence = 0;
  */
 uint16_t DexcomClient::CRC_16_XMODEM(uint8_t* pData, size_t length)
 {
-    uint16_t crc = ~crc16_be((uint16_t)~0x0000, pData, length);       // calculate crc 16 xmodem 
+    uint16_t crc = ~crc16_be((uint16_t)~0x0000, pData, length);       // calculate crc 16 xmodem
     uint8_t crcArray[2] = { (uint8_t)crc, (uint8_t)(crc >> 8) };                                                        // proper way of converting our bytes to string
     uint16_t crcSwapped =  0x100*crcArray[1] + crcArray[0];
 
@@ -38,7 +38,7 @@ uint16_t DexcomClient::CRC_16_XMODEM(uint8_t* pData, size_t length)
 bool DexcomClient::needBackfill()
 {
     if (DexcomConnection::lastConnectionWasError()) return true;                                                                            // Also request backfill if last time was an error (maybe error while backfilling so missed some data).
-    
+
     for(int i = 0; i < saveLastXValues; i++)
     {
         if(glucoseValues[i] < 10 || glucoseValues[i] > 600)                                                             // This includes 0 values from initialisation.
@@ -63,7 +63,7 @@ bool DexcomClient::readTimeMessage()
         return false;
 
     uint8_t status = timeRxBuffer[1];
-    uint32_t currentTime = 0;               // seconds since transmitter activation 
+    uint32_t currentTime = 0;               // seconds since transmitter activation
     uint32_t sessionStartTime = 0;          // currentTime when sensor was started
     memcpy(&currentTime, &(timeRxBuffer[2]), 4);
     memcpy(&sessionStartTime, &(timeRxBuffer[6]), 4);
@@ -100,7 +100,7 @@ bool DexcomClient::readBatteryStatus()
     DexcomConnection::ControlSendValue(batteryStatusTxMessage, 3);
     uint8_t batteryStatusRxBuffer[16];
     size_t batteryStatusRxLength = DexcomConnection::ControlWaitToReceiveValue(batteryStatusRxBuffer, 16);
-    if(!(batteryStatusRxLength == 10 || batteryStatusRxLength == 12) || 
+    if(!(batteryStatusRxLength == 10 || batteryStatusRxLength == 12) ||
          batteryStatusRxBuffer[0] != 0x23)
         return false;
 
@@ -140,16 +140,16 @@ bool DexcomClient::readGlucose()
         return false;
 
     uint8_t status = glucoseRxBuffer[1];
-    uint32_t sequence  = (uint32_t)(glucoseRxBuffer[2] + 
-                                    glucoseRxBuffer[3]*0x100  + 
-                                    glucoseRxBuffer[4]*0x10000 + 
+    uint32_t sequence  = (uint32_t)(glucoseRxBuffer[2] +
+                                    glucoseRxBuffer[3]*0x100  +
+                                    glucoseRxBuffer[4]*0x10000 +
                                     glucoseRxBuffer[5]*0x1000000);
-    uint32_t timestamp = (uint32_t)(glucoseRxBuffer[6] + 
-                                    glucoseRxBuffer[7]*0x100  + 
-                                    glucoseRxBuffer[8]*0x10000 + 
+    uint32_t timestamp = (uint32_t)(glucoseRxBuffer[6] +
+                                    glucoseRxBuffer[7]*0x100  +
+                                    glucoseRxBuffer[8]*0x10000 +
                                     glucoseRxBuffer[9]*0x1000000);
 
-    uint16_t glucoseBytes = (uint16_t)(glucoseRxBuffer[10] + 
+    uint16_t glucoseBytes = (uint16_t)(glucoseRxBuffer[10] +
                                        glucoseRxBuffer[11]*0x100);
     boolean glucoseIsDisplayOnly = (glucoseBytes & 0xf000) > 0;
     uint16_t glucose = glucoseBytes & 0xfff;
@@ -191,21 +191,21 @@ bool DexcomClient::readSensor()
         return false;
 
     uint8_t status = (uint8_t)sensorRxBuffer[1];
-    uint32_t timestamp = (uint32_t)(sensorRxBuffer[2] + 
-                                    sensorRxBuffer[3]*0x100  + 
-                                    sensorRxBuffer[4]*0x10000 + 
+    uint32_t timestamp = (uint32_t)(sensorRxBuffer[2] +
+                                    sensorRxBuffer[3]*0x100  +
+                                    sensorRxBuffer[4]*0x10000 +
                                     sensorRxBuffer[5]*0x1000000);
     SerialPrintf(DATA, "Sensor - Status:     %d\n\r", status);
     SerialPrintf(DATA, "Sensor - Timestamp:  %d\n\r", timestamp);
     if (sensorRxLength > 8)
     {
-        uint32_t unfiltered = (uint32_t)(sensorRxBuffer[6] + 
-                                         sensorRxBuffer[7]*0x100  + 
-                                         sensorRxBuffer[8]*0x10000 + 
+        uint32_t unfiltered = (uint32_t)(sensorRxBuffer[6] +
+                                         sensorRxBuffer[7]*0x100  +
+                                         sensorRxBuffer[8]*0x10000 +
                                          sensorRxBuffer[9]*0x1000000);
-        uint32_t filtered   = (uint32_t)(sensorRxBuffer[10] + 
-                                         sensorRxBuffer[11]*0x100  + 
-                                         sensorRxBuffer[12]*0x10000 + 
+        uint32_t filtered   = (uint32_t)(sensorRxBuffer[10] +
+                                         sensorRxBuffer[11]*0x100  +
+                                         sensorRxBuffer[12]*0x10000 +
                                          sensorRxBuffer[13]*0x1000000);
         if (DexcomConnection::getTransmitterID()[0] == 8)                                                                                      // G6 Transmitter
         {
@@ -222,21 +222,21 @@ bool DexcomClient::readSensor()
 
 /**
  * Reads out the last glucose calibration value.
- */ 
+ */
 bool DexcomClient::readLastCalibration()
 {
     uint8_t calibrationDataTxMessage[3] = {0x32, 0x11, 0x16};
     DexcomConnection::ControlSendValue(calibrationDataTxMessage, 3);
     uint8_t calibrationDataRxBuffer[22];
     size_t calibrationDataRxLength = DexcomConnection::ControlWaitToReceiveValue(calibrationDataRxBuffer, 22);
-    if ((calibrationDataRxLength != 19 && calibrationDataRxLength != 20) || 
-        (calibrationDataRxBuffer[0] != 0x33)) 
+    if ((calibrationDataRxLength != 19 && calibrationDataRxLength != 20) ||
+        (calibrationDataRxBuffer[0] != 0x33))
     return false;
 
     uint16_t glucose   = (uint16_t)(calibrationDataRxBuffer[11] + calibrationDataRxBuffer[12]*0x100);
-    uint32_t timestamp = (uint32_t)(calibrationDataRxBuffer[13] + 
-                                    calibrationDataRxBuffer[14]*0x100  + 
-                                    calibrationDataRxBuffer[15]*0x10000 + 
+    uint32_t timestamp = (uint32_t)(calibrationDataRxBuffer[13] +
+                                    calibrationDataRxBuffer[14]*0x100  +
+                                    calibrationDataRxBuffer[15]*0x10000 +
                                     calibrationDataRxBuffer[16]*0x1000000);
     SerialPrintf(DATA, "Calibration - Glucose:   %d\n\r", glucose);
     SerialPrintf(DATA, "Calibration - Timestamp: %d\n\r", timestamp);
@@ -261,7 +261,7 @@ bool DexcomClient::readBackfill()
     // Set backfill_start to 0 to get all values of the last ~150 measurements (~12,5h)
     uint32_t backfill_start = transmitterElapsedTime - (saveLastXValues * 5) * 60;                                        // Get the last x values. Only need x-1 because we already have the current value but request one more to be sure that we get x-1.
     uint32_t backfill_end   = transmitterElapsedTime - 60;                                                                // Do not request the current value. (But is not anyway available by backfill)
-    
+
 
     memcpy(&backfillTxBuffer[0], &backfill_opcode, 4);
     memcpy(&backfillTxBuffer[4], &backfill_start, 4);
@@ -283,13 +283,13 @@ bool DexcomClient::readBackfill()
     uint8_t status          = backfillRxBuffer[1];
     uint8_t backFillStatus  = backfillRxBuffer[2];
     uint8_t identifier      = backfillRxBuffer[3];
-    uint32_t timestampStart = (uint32_t)(backfillRxBuffer[4] + 
-                                         backfillRxBuffer[5]*0x100  + 
-                                         backfillRxBuffer[6]*0x10000 + 
+    uint32_t timestampStart = (uint32_t)(backfillRxBuffer[4] +
+                                         backfillRxBuffer[5]*0x100  +
+                                         backfillRxBuffer[6]*0x10000 +
                                          backfillRxBuffer[7]*0x1000000);
-    uint32_t timestampEnd   = (uint32_t)(backfillRxBuffer[8] + 
-                                         backfillRxBuffer[9]*0x100  + 
-                                         backfillRxBuffer[10]*0x10000 + 
+    uint32_t timestampEnd   = (uint32_t)(backfillRxBuffer[8] +
+                                         backfillRxBuffer[9]*0x100  +
+                                         backfillRxBuffer[10]*0x10000 +
                                          backfillRxBuffer[11]*0x1000000);
     SerialPrintf(DATA, "Backfill - Status:          %d\n\r", status);
     SerialPrintf(DATA, "Backfill - Backfill Status: %d\n\r", backFillStatus);
@@ -298,13 +298,13 @@ bool DexcomClient::readBackfill()
     SerialPrintf(DATA, "Backfill - Timestamp End:   %d\n\r", timestampEnd);
     printSavedGlucose();
 
-    delay(2*1000);                                                                                                      // Wait 2 seconds to be sure that all backfill data has arrived. 
+    delay(2*1000);                                                                                                      // Wait 2 seconds to be sure that all backfill data has arrived.
     return true;
 }
 
 /**
  * Prints out the last x glucose levels.
- */ 
+ */
 void DexcomClient::printSavedGlucose()
 {
     SerialPrintf(GLUCOSE, "Last %d glucose values (current -> past):\n", saveLastXValues);
@@ -367,9 +367,9 @@ bool DexcomClient::saveBackfill(std::string backfillParseMessage)
  */
 void DexcomClient::parseBackfill(std::string data)
 {
-    uint32_t dextime = (uint32_t)(data[0] + 
-                                  data[1]*0x100  + 
-                                  data[2]*0x10000 + 
+    uint32_t dextime = (uint32_t)(data[0] +
+                                  data[1]*0x100  +
+                                  data[2]*0x10000 +
                                   data[3]*0x1000000);
     uint16_t glucose = (uint16_t)(data[4] + data[5]*0x100);
     uint8_t type     = (uint8_t)data[6];
@@ -383,4 +383,9 @@ void DexcomClient::parseBackfill(std::string data)
     }
 
     SerialPrintf(GLUCOSE,  "Backfill -> Dextime: %d   Glucose: %d   Type: %d\n\r", dextime, glucose, type);
+}
+
+int DexcomClient::get_glucose()
+{
+    return glucoseValues[0] > 0 ? glucoseValues[0] : -1;
 }

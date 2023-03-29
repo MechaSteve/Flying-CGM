@@ -1,16 +1,16 @@
 /**
  * A ESP32 BLE client that can read (glucose, raw, ..) data from the dexcom G6 (G5) transmitter.
- * 
- * Developed in the context of my bachelor thesis at the Technical University (TU) of Darmstadt 
+ *
+ * Developed in the context of my bachelor thesis at the Technical University (TU) of Darmstadt
  * under the supervision of the Telecooperation Lab.
- * 
+ *
  * Specifications Hardware / Software:
  * - ESP32-WROOM-32D (ESP32_DevKitc_V4)
  * - espressif v1.0.4  (https://dl.espressif.com/dl/package_esp32_index.json)
  * - Arduino Studio 1.8.10
  * - Dexcom G6 Transmitter 81xxxx (Model: SW11163, Firmware: 1.6.5.25 / 1.6.13.139)
  * - Dexcom G6 Plus Transmitter 8Gxxxx (unknown)
- * 
+ *
  * Author: Max Kaiser
  * Copyright (c) 2020
  * 28.05.2020
@@ -22,11 +22,11 @@
 // I can't seem to get it to connect twice in a row
 //
 // the old version was accidentally rebooting the controller, and that was allowing it to connect again
-// I think that may be the fastest hack. I can get the past 12 values, which is more than enough to 
+// I think that may be the fastest hack. I can get the past 12 values, which is more than enough to
 // set the current value and trend, the only trick will be to not glitch the TFT too much on reboot.
 //
 // best way to avoid glithching would be to just reset the BLE module to whatever state it is in on reboot, and clear any other variables
-// 
+//
 // worst hack would be to save last received values in flash (along with dextime value)
 //
 //
@@ -37,7 +37,7 @@
 // run function needs an error path
 // instead of just haveing a single line if not exit state, make entire logic into a large nested if statement.
 //  the true path runs the next step, and the else runs exit state.
- 
+
 #include <Arduino.h>
 #include <Esp.h>
 #include "BLEDevice.h"
@@ -45,6 +45,7 @@
 #include "DebugHelper.h"
 #include "G6DexcomBLE.h"
 #include "G6DexcomClient.h"
+#include "G6DexcomMFD.h"
 
 #define STATE_START_SCAN 0                                                                                              // Set this state to start the scan.
 #define STATE_SCANNING   1                                                                                              // Indicates the esp is currently scanning for devices.
@@ -58,15 +59,15 @@ static int Status      = 0;                                                     
 /* Enable when used concurrently with xDrip / Dexcom CGM */           // Tells the transmitter to use the alternative bt channel.
 #define DEXCOM_CONFIG_DEFAULT_ALT_CH false
 
-/* Enable when problems with connecting */                        
-// When true: disables bonding before auth handshake. 
+/* Enable when problems with connecting */
+// When true: disables bonding before auth handshake.
 // Enables bonding after successful authenticated (and before bonding command) so transmitter then can initiate bonding.
 #define DEXCOM_CONFIG_DEFAULT_FORCE_RE_BONDING false
 
 // Defines the default number of glucose values to store
 #define DEXCOM_CONFIG_DEFAULT_X_VALUES_TO_STORE 12
 
-/* Optimization or connecting problems: 
+/* Optimization or connecting problems:
  * - pBLEScan->setInterval(100);             10-500 and > setWindow(..)
  * - pBLEScan->setWindow(99);                10-500 and < setInterval(..)
  * - pBLEScan->setActiveScan(false);         true, false
@@ -81,7 +82,7 @@ static boolean read_complete = false;
 // static globals for timer and previous values
 // these will become static members of the DexomClient class
 static uint32_t lastSec = 0; //roll-over proof seconds counter (may loose time when millis rolls)
-static uint32_t lastReportSec = 0; //sec counter when the last refresh of the CGM was made 
+static uint32_t lastReportSec = 0; //sec counter when the last refresh of the CGM was made
 static uint32_t lastUpdateSec = 0; //sec counter when the last refresh of the TFT was made (limit to ~10s)
 static uint32_t lastConnectSec = 0; //sec counter when the last connection was made
 
@@ -89,7 +90,7 @@ static uint32_t lastConnectSec = 0; //sec counter when the last connection was m
 /**
  * Method to check the reason the ESP woke up or was started.
  */
-void wakeUpRoutine() 
+void wakeUpRoutine()
 {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     switch(wakeup_reason)
@@ -113,30 +114,26 @@ void wakeUpRoutine()
 /**
  * Set up the ESP32 ble.
  */
-void setup() 
+void setup()
 {
+    DexcomMFD::setupTFT();
+    DexcomMFD::drawScreen();
     Serial.begin(115200);
     SerialPrintln(DEBUG, "Start...");
-    delay(5000);
-    SerialPrintln(DEBUG, "5s delay complete...");
-    SerialPrintln(DEBUG, "Starting wake-up routine...");
     wakeUpRoutine();
-    SerialPrintln(DEBUG, "Starting ESP32 dexcom client application...");
-    //BLEDevice::init("");                                                                                    // Possible source of error if we cant connect to the transmitter.
-    //BLEScannerSetup();
 }
 
 
 /**
  * This is the main loop function.
  */
-void loop() 
+void loop()
 {
     if ((millis() / 1000) - lastUpdateSec > 10) {
       lastUpdateSec = millis() / 1000;
       Serial.println("loop");
     }
-      
+
     switch (Status)
     {
       case STATE_START_SCAN:
@@ -151,12 +148,15 @@ void loop()
           run();                                                                                                      // This function is blocking until all tansmitter communication has finished.
           // pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
           Status = STATE_WAIT;
+          DexcomMFD::set_glucoseValue(DexcomClient::get_glucose());
+          DexcomMFD::drawScreen();
         }
         break;
 
       case STATE_WAIT :
-        if ((millis() / 1000) - lastReportSec > 270) {
-            if (!DexcomConnection::isFound() || DexcomConnection::lastConnectionWasError()) 
+        if ((millis() / 1000) - lastConnectSec > 295) {
+            esp_restart();
+            if (!DexcomConnection::isFound() || DexcomConnection::lastConnectionWasError())
             {
                 Status = STATE_START_SCAN;
             }
@@ -165,7 +165,7 @@ void loop()
                 Status = STATE_SCANNING;
             }
         }
-        break;      
+        break;
     }
 }
 
@@ -195,7 +195,7 @@ void run()
     Serial.print("Waited ");
     Serial.print(lastConnectSec - lastReportSec);
     Serial.println(" seconds. ");
-    
+
     if (!error_current_connection) {
         Serial.println("try connect");
         error_current_connection = !DexcomConnection::connect();                                                    // Connect to the found transmitter.
@@ -205,26 +205,26 @@ void run()
 
     // Authenticate with the transmitter.
     if (!error_current_connection) {
-        
+
         Serial.println("try to authenticate");
         error_current_connection = !DexcomSecurity::authenticate();
-        if (error_current_connection) { ExitState("Error while trying to authenticate!"); }     
+        if (error_current_connection) { ExitState("Error while trying to authenticate!"); }
         else { SerialPrintln(DEBUG, "Successfully authenticated."); }
     }
 
     // Enable encryption and requesting bonding.
     if (!error_current_connection) {
-        
+
         Serial.println("try to bond");
         error_current_connection = !DexcomSecurity::requestBond();
-        if (error_current_connection) { ExitState("Error while trying to bond!"); }     
+        if (error_current_connection) { ExitState("Error while trying to bond!"); }
         else { SerialPrintln(DEBUG, "Successfully bonded."); }
     }
 
     // Read the general device informations like model no. and manufacturer.
 
     if (!error_current_connection) {
-        
+
         Serial.println("try to read device information");
         error_current_connection = !DexcomConnection::readDeviceInformations();
         if (error_current_connection) { ExitState("Error while reading device informations!"); }    // If empty strings are read from the device information Characteristic, try reading device information after successfully authenticated.
@@ -233,37 +233,37 @@ void run()
 
     // Register the control channel callback.
     if (!error_current_connection) {
-        
+
         Serial.println("try to register control callback");
         error_current_connection = !DexcomConnection::controlRegister();
-        if (error_current_connection) { ExitState("Error while trying to register!"); }     
+        if (error_current_connection) { ExitState("Error while trying to register!"); }
         else { SerialPrintln(DEBUG, "Successfully registered."); }
     }
 
     // Reading current time from the transmitter (important for backfill).
     if (!error_current_connection) {
-        
+
         Serial.println("try to read time message");
         error_current_connection = !DexcomClient::readTimeMessage();
-        if (error_current_connection) { ExitState("Error reading Time Message!"); }     
+        if (error_current_connection) { ExitState("Error reading Time Message!"); }
         else { SerialPrintln(DEBUG, "Successfully read time message."); }
     }
 
     // Reading current battery status
     if (!error_current_connection) {
-        
+
         Serial.println("try to read battery status");
         error_current_connection = !DexcomClient::readBatteryStatus();
-        if (error_current_connection) { ExitState("Error reading battery status!"); }     
+        if (error_current_connection) { ExitState("Error reading battery status!"); }
         else { SerialPrintln(DEBUG, "Successfully read battery status."); }
     }
 
     //Read current glucose level to save it.
     if (!error_current_connection) {
-        
+
         Serial.println("try to read current glucose");
         error_current_connection = !DexcomClient::readGlucose();
-        if (error_current_connection) { ExitState("Error reading current glucose!"); }     
+        if (error_current_connection) { ExitState("Error reading current glucose!"); }
         else { SerialPrintln(DEBUG, "Successfully read current glucose."); }
     }
 
@@ -276,11 +276,11 @@ void run()
     // Optional: read time and glucose of last calibration.
     //if(!readLastCalibration())
         //SerialPrintln(ERROR, "Can't read last calibration data!");
-    
+
 
     if(DexcomClient::needBackfill())
     {
-        DexcomConnection::backfillRegister();                         // Now register on the backfill characteristic.       
+        DexcomConnection::backfillRegister();                         // Now register on the backfill characteristic.
         // Read backfill of the last x values to also saves them.
         if(!DexcomClient::readBackfill())
             SerialPrintln(ERROR, "Can't read backfill data!");

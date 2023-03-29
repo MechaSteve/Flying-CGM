@@ -2,8 +2,8 @@
  * Header File with functions to communitcate data with with dexcom transmitter
  * after a connection has been created and authenticated.
  * Also includes defines specifict to the G6 protocol and services
- * 
- * 
+ *
+ *
  * Author: Stephen Culpepper
  * 2023.03.15
  */
@@ -37,6 +37,7 @@ class DexcomClient
         static bool readBackfill();
         static bool saveBackfill(std::string backfillParseMessage);
         static void parseBackfill(std::string data);
+        static int get_glucose();
     private:
         static uint16_t CRC_16_XMODEM(uint8_t* pData, size_t length);
         static void printSavedGlucose();
