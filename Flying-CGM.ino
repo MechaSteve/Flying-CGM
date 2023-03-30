@@ -40,6 +40,8 @@
 
 #include <Arduino.h>
 #include <Esp.h>
+//Test program found the LC709203F Battery charge controller
+#include "Adafruit_LC709203F.h"
 #include "BLEDevice.h"
 #include "BLEScan.h"
 #include "DebugHelper.h"
@@ -76,15 +78,18 @@ static int Status      = 0;                                                     
 
 // Variables which survives the deep sleep. Uses RTC_SLOW memory.
 RTC_SLOW_ATTR static boolean error_last_connection = false;
+RTC_SLOW_ATTR static int glucoseCurrentValue;
 static boolean error_current_connection = false;                                                                        // To detect an error in the current session.
 static boolean read_complete = false;
 
 // static globals for timer and previous values
 // these will become static members of the DexomClient class
 static uint32_t lastSec = 0; //roll-over proof seconds counter (may loose time when millis rolls)
-static uint32_t lastReportSec = 0; //sec counter when the last refresh of the CGM was made
 static uint32_t lastUpdateSec = 0; //sec counter when the last refresh of the TFT was made (limit to ~10s)
 static uint32_t lastConnectSec = 0; //sec counter when the last connection was made
+
+
+Adafruit_LC709203F lc;
 
 
 /**
@@ -92,23 +97,31 @@ static uint32_t lastConnectSec = 0; //sec counter when the last connection was m
  */
 void wakeUpRoutine()
 {
-    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    switch(wakeup_reason)
+    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER)
     {
-        case ESP_SLEEP_WAKEUP_TIMER :
-            if(error_last_connection)                                                                                   // An error occured last session.
-            {
-                DexcomSecurity::forceRebondingEnable();
-                SerialPrintln(DEBUG, "Error happened in last connection so set force rebonding to true.");
-            }                                                                                                           // Otherwise keep the default force_rebonding setting. (could be false or true when changed manually).
-            SerialPrintln(DEBUG, "Wakeup caused by timer from hibernation.");                                           // No need to restart / reset variables because all memory is lost after hibernation.
-            //printSavedGlucose();                                                                                        // Only potential values available when woke up from deep sleep.
-            break;
-        default :
-            DexcomSecurity::forceRebondingEnable();                                                                     // Force bonding when esp first started after power off (or flash).
-            SerialPrintln(DEBUG, "Wakeup was not caused by deep sleep (normal start).");                                // Problem with allways this case? See https://forum.mongoose-os.com/discussion/1628/tg0wdt-sys-reset-immediately-after-waking-from-deep-sleep
-            break;
+        if(error_last_connection)                                                                                   // An error occured last session.
+        {
+            DexcomSecurity::forceRebondingEnable();
+            SerialPrintln(DEBUG, "Error happened in last connection so set force rebonding to true.");
+        }                                                                                                           // Otherwise keep the default force_rebonding setting. (could be false or true when changed manually).
+        SerialPrintln(DEBUG, "Wakeup caused by timer from hibernation.");                                           // No need to restart / reset variables because all memory is lost after hibernation.
+        //printSavedGlucose();                                                                                        // Only potential values available when woke up from deep sleep.
     }
+    else
+    {
+        if (esp_reset_reason() == ESP_RST_SW)
+        {
+            SerialPrintln(DEBUG, "Reset trigged by software.");
+            DexcomSecurity::forceRebondingEnable();
+        }
+        else
+        {
+            DexcomSecurity::forceRebondingEnable();
+            glucoseCurrentValue = 0;
+        }
+
+    }
+    DexcomMFD::set_glucoseValue(glucoseCurrentValue);
 }
 
 /**
@@ -117,10 +130,11 @@ void wakeUpRoutine()
 void setup()
 {
     DexcomMFD::setupTFT();
-    DexcomMFD::drawScreen();
     Serial.begin(115200);
+    setupLipo();
     SerialPrintln(DEBUG, "Start...");
     wakeUpRoutine();
+    DexcomMFD::drawScreen();
 }
 
 
@@ -144,26 +158,22 @@ void loop()
 
       case STATE_SCANNING:
         if(DexcomConnection::isFound()) {
-          // A device (transmitter) was found by the scan (callback).
-          run();                                                                                                      // This function is blocking until all tansmitter communication has finished.
-          // pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
-          Status = STATE_WAIT;
-          DexcomMFD::set_glucoseValue(DexcomClient::get_glucose());
-          DexcomMFD::drawScreen();
+            // A device (transmitter) was found by the scan (callback).
+            // Note the time offset when the device is found.
+            lastConnectSec = millis() / 1000;
+            run();                                                                                                      // This function is blocking until all tansmitter communication has finished.
+            // pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
+            Status = STATE_WAIT;
+            glucoseCurrentValue = DexcomClient::get_glucose();
+            DexcomMFD::set_glucoseValue(glucoseCurrentValue);
+            lc709203f();
+            DexcomMFD::drawScreen();
         }
         break;
 
       case STATE_WAIT :
         if ((millis() / 1000) - lastConnectSec > 295) {
             esp_restart();
-            if (!DexcomConnection::isFound() || DexcomConnection::lastConnectionWasError())
-            {
-                Status = STATE_START_SCAN;
-            }
-            else
-            {
-                Status = STATE_SCANNING;
-            }
         }
         break;
     }
@@ -189,11 +199,10 @@ void run()
     read_complete = false;
 
     if(!DexcomSecurity::forceRebondingEnabled())
-        DexcomSecurity::setupBonding();                                                                                                // Enable bonding from the start on, so transmitter does not want to (re)bond.
+        DexcomSecurity::setupBonding();
 
-    lastConnectSec = millis() / 1000;
     Serial.print("Waited ");
-    Serial.print(lastConnectSec - lastReportSec);
+    Serial.print(lastConnectSec);
     Serial.println(" seconds. ");
 
     if (!error_current_connection) {
@@ -288,4 +297,34 @@ void run()
                                                                                   // When we reached this point no error occured.
     //Let the Transmitter close the connection.
     DexcomConnection::disconnect();
+}
+
+void setupLipo()
+{
+    if (!lc.begin()) {
+      Serial.println(F("Couldnt find Adafruit LC709203F."));
+      while (1) delay(10);
+    }
+    // found lc709203f!
+    else {
+      Serial.println(F("Found LC709203F"));
+      Serial.print("Version: 0x"); Serial.println(lc.getICversion(), HEX);
+      lc.setThermistorB(3950);
+      Serial.print("Thermistor B = "); Serial.println(lc.getThermistorB());
+      lc.setPackSize(LC709203F_APA_500MAH);
+      lc.setAlarmVoltage(3.8);
+    }
+}
+
+
+void lc709203f() {
+  Serial.print("Batt_Voltage:");
+  Serial.print(lc.cellVoltage(), 3);
+  Serial.print("\t");
+  Serial.print("Batt_Percent:");
+  Serial.print(lc.cellPercent(), 1);
+  DexcomMFD::set_battPct(lc.cellPercent());
+  Serial.print("\t");
+  Serial.print("Batt_Temp:");
+  Serial.println(lc.getCellTemperature(), 1);
 }

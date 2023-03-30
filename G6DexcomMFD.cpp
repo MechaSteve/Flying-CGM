@@ -9,7 +9,7 @@ int DexcomMFD::hiHighLimit = 180;
 int DexcomMFD::highLimit = 140;
 int DexcomMFD::lowLimit = 90;
 int DexcomMFD::loLowLimit = 60;
-int DexcomMFD::glucoseDisplay = 125;
+int DexcomMFD::glucoseDisplay = 0;
 int DexcomMFD::rateDisplay = +7;
 int DexcomMFD::battDisplay = 72;
 
@@ -39,7 +39,7 @@ void DexcomMFD::setupTFT()
 
 void DexcomMFD::drawScreen()
 {
-    const static int gluX = 60;
+    const static int gluX = 20;
     const static int gluY = 60;
     const static int gluWd = 22;
     const static int gluTpWd = 14;
@@ -75,22 +75,25 @@ void DexcomMFD::drawScreen()
     tft.fillRect(gluX + gluTpOfSt, gluYH, gluTpWd, gluYL - gluYH, GARMIN_GREEN_16); //green control band
     tft.setTextColor(ST77XX_WHITE);
     tft.setFont(&FreeSans9pt7b);
-    tft.setCursor(gluX - 15, 12);
+    // tft.setCursor(gluX - 15, 12);
+    tft.setCursor(gluX + gluTpOfSt - txtCenter("CGM"), 12);
     tft.println("CGM");
     tft.setCursor(gluX + gluWd + 8, gluYH + 5);
     tft.println(highLimit);
     tft.setCursor(gluX + gluWd + 8, gluYL + 5);
     tft.println(lowLimit);
     tft.setFont(&FreeSans18pt7b);
-    tft.setCursor(gluX - 20, gluY - 8);
+    // tft.setCursor(gluX - 20, gluY - 8);
     if (glucoseDisplay > 10)
     {
+        tft.setCursor(gluX + gluTpOfSt - txtCenter(String(glucoseDisplay)), gluY - 8);
         tft.println(glucoseDisplay);
         tft.fillTriangle(gluX, glucoseY - (gluTpWd / 2), gluX + gluWd, glucoseY, gluX, glucoseY + (gluWd / 2), ST77XX_WHITE);
         tft.drawTriangle(gluX, glucoseY - (gluTpWd / 2), gluX + gluWd, glucoseY, gluX, glucoseY + (gluWd / 2), ST77XX_BLACK);
     }
     else
     {
+        tft.setCursor(gluX + gluTpOfSt - txtCenter("---"), gluY - 8);
         tft.println("---");
     }
 
@@ -157,3 +160,15 @@ void DexcomMFD::set_lowBatt(int limit)
 void DexcomMFD::set_loLowBatt(int limit)
 {
 }
+
+//returns the center offset for the given string
+int DexcomMFD::txtCenter(const String &str)
+{
+    int16_t  x1, y1;
+    uint16_t w, h;
+
+    tft.getTextBounds(str, 20, 20, &x1, &y1, &w, &h);
+    return w / 2;
+}
+
+

@@ -50,7 +50,28 @@ class DexcomMFD {
         static void set_loLowBG(int limit);
         static void set_lowBatt(int limit);
         static void set_loLowBatt(int limit);
+
+    private:
+        static int txtCenter(const String &str);
 };
+
+/** generic draw indicator data struct
+ *
+ * this contains basic position, size, and scale information for the indicator
+ *
+ * x, y  far left and top coordinates of graph
+ * ht total height of the space INSIDE the bracket
+ * wd total width of the top and bottom of the bracket
+ * tpWd width of the color tape inside the bracket
+ * max : maximum value of the graph
+ * min : minimum value of the graph
+ *
+ **/
+typedef struct {
+  unsigned int x, y;
+  unsigned int height, width, tapeWidth;
+  int max, min;
+} DexcomIndicator;
 
 
 
