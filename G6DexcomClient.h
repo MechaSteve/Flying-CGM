@@ -38,6 +38,7 @@ class DexcomClient
         static bool saveBackfill(std::string backfillParseMessage);
         static void parseBackfill(std::string data);
         static int get_glucose();
+        static int get_rate(); //returns to the rate of change in points per hour
     private:
         static uint16_t CRC_16_XMODEM(uint8_t* pData, size_t length);
         static void printSavedGlucose();

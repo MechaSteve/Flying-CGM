@@ -40,6 +40,7 @@
 
 #include <Arduino.h>
 #include <Esp.h>
+#include <Preferences.h>
 //Test program found the LC709203F Battery charge controller
 #include "Adafruit_LC709203F.h"
 #include "BLEDevice.h"
@@ -76,11 +77,18 @@ static int Status      = 0;                                                     
  * - BLEDevice::getScan()->start(0, true)    true, false */
 
 
-// Variables which survives the deep sleep. Uses RTC_SLOW memory.
-RTC_SLOW_ATTR static boolean error_last_connection = false;
-RTC_SLOW_ATTR static int glucoseCurrentValue;
+// Variables which survives the deep sleep. Uses RTC_DATA memory.
+RTC_DATA_ATTR static boolean error_last_connection = false;
+RTC_DATA_ATTR static int glucoseCurrentValue;
 static boolean error_current_connection = false;                                                                        // To detect an error in the current session.
 static boolean read_complete = false;
+
+
+
+#define RW_MODE false
+#define RO_MODE true
+
+Preferences flashStorage;
 
 // static globals for timer and previous values
 // these will become static members of the DexomClient class
@@ -112,14 +120,28 @@ void wakeUpRoutine()
         if (esp_reset_reason() == ESP_RST_SW)
         {
             SerialPrintln(DEBUG, "Reset trigged by software.");
+            SerialPrintf(DEBUG, "Glucose value read from RTC memory: %d", glucoseCurrentValue);
             DexcomSecurity::forceRebondingEnable();
         }
         else
         {
             DexcomSecurity::forceRebondingEnable();
-            glucoseCurrentValue = 0;
         }
 
+    }
+    flashStorage.begin("Dexcom", RO_MODE);
+    if( flashStorage.isKey("CurVal"))
+    {
+        glucoseCurrentValue = flashStorage.getInt("CurVal");
+        flashStorage.end();
+    }
+    else
+    {
+        flashStorage.end();
+        flashStorage.begin("Dexcom", RW_MODE);
+        flashStorage.putInt("CurVal", 0);
+        flashStorage.end();
+        glucoseCurrentValue = 0;
     }
     DexcomMFD::set_glucoseValue(glucoseCurrentValue);
 }
@@ -168,6 +190,9 @@ void loop()
             DexcomMFD::set_glucoseValue(glucoseCurrentValue);
             lc709203f();
             DexcomMFD::drawScreen();
+            flashStorage.begin("Dexcom", RW_MODE);
+            flashStorage.putInt("CurVal", glucoseCurrentValue);
+            flashStorage.end();
         }
         break;
 

@@ -45,7 +45,9 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "ctime": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "cstring": "cpp",
+        "unordered_set": "cpp"
     },
     "cSpell.words": [
         "dextime",
