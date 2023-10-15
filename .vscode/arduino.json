@@ -1,8 +1,8 @@
 {
-    "configuration": "LoopCore=1,EventsCore=1,USBMode=default,CDCOnBoot=cdc,MSCOnBoot=default,DFUOnBoot=default,UploadMode=cdc,PSRAM=enabled,PartitionScheme=tinyuf2,CPUFreq=240,FlashMode=qio,FlashSize=4M,UploadSpeed=921600,DebugLevel=none,EraseFlash=none",
-    "board": "esp32:esp32:adafruit_feather_esp32s3_tft",
+    "configuration": "JTAGAdapter=default,LoopCore=1,EventsCore=1,USBMode=hwcdc,CDCOnBoot=cdc,MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,PartitionScheme=app3M_fat9M_16MB,DebugLevel=none,EraseFlash=none",
+    "board": "esp32:esp32:lilygo_t_display_s3",
     "sketch": "Flying-CGM.ino",
-    "port": "COM5",
+    "port": "COM4",
     "programmer": "esptool",
     "output": "../ArduinoOutput"
 }
