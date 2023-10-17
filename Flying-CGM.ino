@@ -41,8 +41,8 @@
 #include <Arduino.h>
 #include <Esp.h>
 #include <Preferences.h>
-//Test program found the LC709203F Battery charge controller
-#include "Adafruit_LC709203F.h"
+#include <driver/adc.h>
+#include "esp_adc_cal.h"
 #include "BLEDevice.h"
 #include "BLEScan.h"
 #include "DebugHelper.h"
@@ -57,7 +57,8 @@
 static int Status      = 0;                                                                                             // Set to 0 to automatically start scanning when esp has started.
 
 // This transmitter ID is used to identify our transmitter if multiple dexcom transmitters are found.
-#define DEXCOM_CONFIG_DEFAULT_ID "8XC0FT"
+// Updated 2023-10-15 to garbage. Create an include file and add to git-ignore.
+// #define DEXCOM_CONFIG_DEFAULT_ID "8nXXnn"
 
 /* Enable when used concurrently with xDrip / Dexcom CGM */           // Tells the transmitter to use the alternative bt channel.
 #define DEXCOM_CONFIG_DEFAULT_ALT_CH false
@@ -80,6 +81,7 @@ static int Status      = 0;                                                     
 // Variables which survives the deep sleep. Uses RTC_DATA memory.
 RTC_DATA_ATTR static boolean error_last_connection = false;
 RTC_DATA_ATTR static int glucoseCurrentValue;
+// Variables which do not survive reset.
 static boolean error_current_connection = false;                                                                        // To detect an error in the current session.
 static boolean read_complete = false;
 
@@ -93,11 +95,11 @@ Preferences flashStorage;
 // static globals for timer and previous values
 // these will become static members of the DexomClient class
 static uint32_t lastSec = 0; //roll-over proof seconds counter (may loose time when millis rolls)
-static uint32_t lastUpdateSec = 0; //sec counter when the last refresh of the TFT was made (limit to ~10s)
+static uint32_t lastUpdateSec = 0; //sec counter when the last refresh of the TFT was made (limit to ~1s)
 static uint32_t lastConnectSec = 0; //sec counter when the last connection was made
+static uint32_t lastDataSec = 0; //sec counter when the last data update was made (retained on reset)
 
 
-Adafruit_LC709203F lc;
 
 
 /**
@@ -130,33 +132,48 @@ void wakeUpRoutine()
 
     }
     flashStorage.begin("Dexcom", RO_MODE);
-    if( flashStorage.isKey("CurVal"))
-    {
-        glucoseCurrentValue = flashStorage.getInt("CurVal");
-        flashStorage.end();
-    }
-    else
+    if( !flashStorage.isKey("CurVal"))
     {
         flashStorage.end();
         flashStorage.begin("Dexcom", RW_MODE);
         flashStorage.putInt("CurVal", 0);
         flashStorage.end();
-        glucoseCurrentValue = 0;
     }
+    flashStorage.begin("Dexcom", RO_MODE);
+    if( !flashStorage.isKey("DataAge"))
+    {
+        flashStorage.end();
+        flashStorage.begin("Dexcom", RW_MODE);
+        flashStorage.putInt("DataAge", 600);
+        flashStorage.end();
+    }
+
+    // We set default values, so we always read data
+    flashStorage.begin("Dexcom", RO_MODE);
+    glucoseCurrentValue = flashStorage.getInt("CurVal");
+    lastDataSec = flashStorage.getInt("DataAge");
+    flashStorage.end();
+
     DexcomMFD::set_glucoseValue(glucoseCurrentValue);
+    DexcomMFD::set_dataAge(lastDataSec);
 }
 
 /**
  * Set up the ESP32 ble.
  */
 void setup()
-{
+{    
+    std::string id = DexcomConnection::getTransmitterID();
     DexcomMFD::setupTFT();
     Serial.begin(115200);
     setupLipo();
-    SerialPrintln(DEBUG, "Start...");
+    Serial.println("Start...");
+    Serial.print("Looking for transmitter: ");
+    Serial.println((char *)id.c_str());
     wakeUpRoutine();
     DexcomMFD::drawScreen();
+    DexcomMFD::drawTime(lastDataSec);
+    DexcomMFD::drawVBat(readVBat());
 }
 
 
@@ -165,9 +182,15 @@ void setup()
  */
 void loop()
 {
-    if ((millis() / 1000) - lastUpdateSec > 10) {
-      lastUpdateSec = millis() / 1000;
-      Serial.println("loop");
+    int timeDelta = (millis() / 1000) - lastUpdateSec;
+    if (timeDelta > 0) {
+      lastUpdateSec += timeDelta;
+      saveDataAge(lastDataSec + timeDelta);
+      DexcomMFD::drawTime(lastDataSec);
+      if (lastUpdateSec / 10 > (lastUpdateSec - timeDelta) / 10) {
+        Serial.println("loop");
+        DexcomMFD::drawVBat(readVBat());
+      }
     }
 
     switch (Status)
@@ -175,7 +198,7 @@ void loop()
       case STATE_START_SCAN:
         //pBLEScan->start(0, true);                                                                         // false = maybe helps with connection problems.
         DexcomConnection::find();
-        Status = STATE_SCANNING;
+        if (DexcomConnection::isFound()) Status = STATE_SCANNING;
         //break;
 
       case STATE_SCANNING:
@@ -190,6 +213,8 @@ void loop()
             DexcomMFD::set_glucoseValue(glucoseCurrentValue);
             lc709203f();
             DexcomMFD::drawScreen();
+            DexcomMFD::drawVBat(readVBat());
+            lastUpdateSec = millis() / 1000;
             flashStorage.begin("Dexcom", RW_MODE);
             flashStorage.putInt("CurVal", glucoseCurrentValue);
             flashStorage.end();
@@ -298,7 +323,11 @@ void run()
         Serial.println("try to read current glucose");
         error_current_connection = !DexcomClient::readGlucose();
         if (error_current_connection) { ExitState("Error reading current glucose!"); }
-        else { SerialPrintln(DEBUG, "Successfully read current glucose."); }
+        else 
+        { 
+            SerialPrintln(DEBUG, "Successfully read current glucose."); 
+            saveDataAge(0);
+        }
     }
 
     if(!error_current_connection) read_complete = true;
@@ -324,32 +353,39 @@ void run()
     DexcomConnection::disconnect();
 }
 
+
+
+// TODO: Update this to configure the analog port for the batery voltage sense rename setupAnalogLiPo
 void setupLipo()
 {
-    if (!lc.begin()) {
-      Serial.println(F("Couldnt find Adafruit LC709203F."));
-      while (1) delay(10);
-    }
-    // found lc709203f!
-    else {
-      Serial.println(F("Found LC709203F"));
-      Serial.print("Version: 0x"); Serial.println(lc.getICversion(), HEX);
-      lc.setThermistorB(3950);
-      Serial.print("Thermistor B = "); Serial.println(lc.getThermistorB());
-      lc.setPackSize(LC709203F_APA_500MAH);
-      lc.setAlarmVoltage(3.8);
-    }
+    Serial.println(F("Setting up analog read of battery voltage"));
+    esp_adc_cal_characteristics_t adc_chars;
+    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
 }
 
+int readVBat()
+{
+    esp_adc_cal_characteristics_t adc_chars;
+    // Get the internal calibration value of the chip
+    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
+    uint32_t raw = analogRead(PIN_BAT_VOLT);
+    uint32_t v1 = esp_adc_cal_raw_to_voltage(raw, &adc_chars) * 2; //The partial pressure is one-half
+    Serial.print("Batt_Voltage: ");
+    Serial.print(v1);
+    Serial.println(" mV");
+    return (int)v1;
+}
 
+// Replage this with analogLiPo
 void lc709203f() {
-  Serial.print("Batt_Voltage:");
-  Serial.print(lc.cellVoltage(), 3);
-  Serial.print("\t");
-  Serial.print("Batt_Percent:");
-  Serial.print(lc.cellPercent(), 1);
-  DexcomMFD::set_battPct(lc.cellPercent());
-  Serial.print("\t");
-  Serial.print("Batt_Temp:");
-  Serial.println(lc.getCellTemperature(), 1);
+  Serial.print("Batt_Voltage: unknown");
+  // Serial.print(lc.cellVoltage(), 3);
+  // DexcomMFD::set_battPct(lc.cellPercent());
+}
+
+void saveDataAge(int32_t newAge) {
+    flashStorage.begin("Dexcom", RW_MODE);
+    lastDataSec = newAge;
+    flashStorage.putInt("DataAge", lastDataSec);
+    flashStorage.end();
 }

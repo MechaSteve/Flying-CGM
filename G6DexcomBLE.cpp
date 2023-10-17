@@ -13,6 +13,7 @@
 #include "BLEDevice.h"
 #include "BLEScan.h"
 #include "G6DexcomBLE.h"
+#include "G6Transmitter.h"
 
 
 // The remote service we wish to connect to.
@@ -250,7 +251,7 @@ uint8_t DexcomConnection::BackfillResponseBuffer[32];
 volatile size_t DexcomConnection::BackfillResponseLength = 0;
 uint8_t DexcomConnection::ControlResponseBuffer[32];
 volatile size_t DexcomConnection::ControlResponseLength = 0;
-std::string DexcomConnection::transmitterID = "8XC0FT";       // Static storage of one transmitter ID (only the last two characters matter)
+std::string DexcomConnection::transmitterID = DEXCOM_CONFIG_DEFAULT_ID;       // Static storage of one transmitter ID (only the last two characters matter)
 
 
 BLERemoteCharacteristic* DexcomConnection::pRemoteCommunication = NULL;
@@ -467,7 +468,7 @@ void DexcomConnection::find()
     pBLEScan->setInterval(100); //100 works                                                                 // The time in ms how long each search intervall last. Important for fast scanning so we dont miss the transmitter waking up.
     pBLEScan->setWindow(99); //60-99 works                                                                  // The actual time that will be searched. Interval - Window = time the esp is doing nothing (used for energy efficiency).
     pBLEScan->setActiveScan(false); 
-    pBLEScan->start(0, true);                                                                               // false = maybe helps with connection problems.
+    pBLEScan->start(10, true);                                                                               // false = maybe helps with connection problems.
 }
 
 void DexcomConnection::advertisedDeviceCallback(BLEAdvertisedDevice advertisedDevice)
