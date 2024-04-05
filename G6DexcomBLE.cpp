@@ -468,7 +468,7 @@ void DexcomConnection::find()
     pBLEScan->setInterval(100); //100 works                                                                 // The time in ms how long each search intervall last. Important for fast scanning so we dont miss the transmitter waking up.
     pBLEScan->setWindow(99); //60-99 works                                                                  // The actual time that will be searched. Interval - Window = time the esp is doing nothing (used for energy efficiency).
     pBLEScan->setActiveScan(false); 
-    pBLEScan->start(10, true);                                                                               // false = maybe helps with connection problems.
+    pBLEScan->start(3, true);                                                                               // false = maybe helps with connection problems.
 }
 
 void DexcomConnection::advertisedDeviceCallback(BLEAdvertisedDevice advertisedDevice)

@@ -167,7 +167,10 @@ void DexcomMFD::drawTime(uint32_t time)
     int hDig = 20;
 
 
-    if (timeMins > 9) timeMins = 9;
+    if (minTens > 9) 
+    {
+        minTens = minOnes = secTens = secOnes = 9;
+    }
 
     // drawGrid();
     uint16_t color = DARKGREEN;
@@ -216,6 +219,36 @@ void DexcomMFD::drawVBat(int mVolts)
     tft.println(hundreths);
     tft.setCursor(x + 4*wDig, y);
     tft.println("v");
+
+}
+
+void DexcomMFD::drawPBat(int pct)
+{
+    int y = 280;
+    int x = 110;
+    int wDig = 9;
+    int hDig = 20;
+    int hundreds = pct / 100;
+    int tens = (pct - 100*hundreds) / 10;
+    int ones = pct - 100*hundreds - 10*tens;
+
+    tft.fillRoundRect(x-2, y-hDig, 5*wDig + 4, hDig + 4, 3, BLACK); //Erase old time
+    tft.setTextColor(WHITE);
+    tft.setFont(u8g2_font_helvB10_te);
+    if(pct >= 100)
+    {        
+        tft.setCursor(x, y);
+        tft.println(hundreds);
+    }
+    if(pct >= 10)
+    {        
+        tft.setCursor(x + wDig, y);
+        tft.println(tens);
+    }
+    tft.setCursor(x + 2*wDig, y);
+    tft.println(ones);
+    tft.setCursor(x + 3*wDig, y);
+    tft.println("%");
 
 }
 

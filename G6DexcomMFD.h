@@ -55,6 +55,7 @@ class DexcomMFD {
         static void drawScreen();
         static void drawTime(uint32_t time);
         static void drawVBat(int mVolts);
+        static void drawPBat(int pct);
         static void set_glucoseValue(int bg_value);
         static void set_glucoseRate(int bg_rate);
         static void set_battPct(int batt_pct);

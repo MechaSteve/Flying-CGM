@@ -174,6 +174,7 @@ void setup()
     DexcomMFD::drawScreen();
     DexcomMFD::drawTime(lastDataSec);
     DexcomMFD::drawVBat(readVBat());
+    DexcomMFD::drawPBat(getPctBat(readVBat()));
 }
 
 
@@ -190,6 +191,7 @@ void loop()
       if (lastUpdateSec / 10 > (lastUpdateSec - timeDelta) / 10) {
         Serial.println("loop");
         DexcomMFD::drawVBat(readVBat());
+        DexcomMFD::drawPBat(getPctBat(readVBat()));
       }
     }
 
@@ -214,6 +216,7 @@ void loop()
             lc709203f();
             DexcomMFD::drawScreen();
             DexcomMFD::drawVBat(readVBat());
+            DexcomMFD::drawPBat(getPctBat(readVBat()));
             lastUpdateSec = millis() / 1000;
             flashStorage.begin("Dexcom", RW_MODE);
             flashStorage.putInt("CurVal", glucoseCurrentValue);
@@ -372,8 +375,47 @@ int readVBat()
     uint32_t v1 = esp_adc_cal_raw_to_voltage(raw, &adc_chars) * 2; //The partial pressure is one-half
     Serial.print("Batt_Voltage: ");
     Serial.print(v1);
-    Serial.println(" mV");
+    Serial.println(" mV ");
     return (int)v1;
+}
+
+int getPctBat(int v1)
+{
+    // defined points in percent and milivolts
+    int BAT_PCT[8] = { 0, 10, 25, 50, 75, 90, 100, 110};
+    //table for drain and charging
+    int BAT_VOLT_D[7] = { 2500, 3330, 3450, 3660, 3800, 3900, 4000};
+    int BAT_VOLT_C[7] = { 4350, 4400, 4450, 4500, 4560, 4620, 4650};
+    int BAT_VOLT_CHARGING = 4190;
+    int pct = 100;
+
+    if (v1 >= BAT_VOLT_CHARGING)
+    {
+        if (v1 < BAT_VOLT_C[0]) pct = 0;
+        for(int i = 0; i < 6; i++)
+        {
+            if (v1 >= BAT_VOLT_C[i] && v1 < BAT_VOLT_C[i+1]) 
+            {
+                pct = BAT_PCT[i] + ((BAT_PCT[i+1] - BAT_PCT[i]) * (v1 - BAT_VOLT_C[i]) / (BAT_VOLT_C[i+1] - BAT_VOLT_C[i]));
+            }
+        }
+
+    }
+    else
+    {
+        if (v1 < BAT_VOLT_D[0]) pct = 0;
+        for(int i = 0; i < 6; i++)
+        {            
+            if (v1 >= BAT_VOLT_D[i] && v1 < BAT_VOLT_D[i+1]) 
+            {
+                pct = BAT_PCT[i] + ((BAT_PCT[i+1] - BAT_PCT[i]) * (v1 - BAT_VOLT_D[i]) / (BAT_VOLT_D[i+1] - BAT_VOLT_D[i]));
+            }
+        }
+    }
+    Serial.print("Battery_Charge: ");
+    Serial.print(pct);
+    Serial.println("%");
+    return pct; //return 100 if nothing above modified it
 }
 
 // Replage this with analogLiPo
@@ -384,8 +426,11 @@ void lc709203f() {
 }
 
 void saveDataAge(int32_t newAge) {
-    flashStorage.begin("Dexcom", RW_MODE);
-    lastDataSec = newAge;
-    flashStorage.putInt("DataAge", lastDataSec);
-    flashStorage.end();
+    if (newAge < 7000)
+    {        
+        flashStorage.begin("Dexcom", RW_MODE);
+        lastDataSec = newAge;
+        flashStorage.putInt("DataAge", lastDataSec);
+        flashStorage.end();
+    }
 }
