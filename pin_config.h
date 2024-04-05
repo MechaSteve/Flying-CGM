@@ -10,6 +10,9 @@
 
 /*ESP32S3*/
 #define PIN_LCD_BL                   38
+#define LCD_BL_LED_CHANNEL           0
+#define LCD_BL_LED_FREQ              5000
+#define LCD_BL_LED_RES               8
 
 #define PIN_LCD_D0                   39
 #define PIN_LCD_D1                   40

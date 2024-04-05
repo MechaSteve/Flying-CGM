@@ -21,8 +21,9 @@ int DexcomMFD::dataAge = 1200;
 void DexcomMFD::setupTFT()
 {
     // turn on backlight
-    pinMode(PIN_LCD_BL, OUTPUT);
-    digitalWrite(PIN_LCD_BL, HIGH);
+    ledcSetup( LCD_BL_LED_CHANNEL, LCD_BL_LED_FREQ, LCD_BL_LED_RES);
+    ledcAttachPin(PIN_LCD_BL, LCD_BL_LED_CHANNEL);
+    ledcWrite( LCD_BL_LED_CHANNEL, 255);
 
     // turn on the TFT / I2C power supply
     pinMode(PIN_POWER_ON, OUTPUT);

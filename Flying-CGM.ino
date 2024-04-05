@@ -383,7 +383,7 @@ int getPctBat(int v1)
 {
     // defined points in percent and milivolts
     int BAT_PCT[8] = { 0, 10, 25, 50, 75, 90, 100, 110};
-    //table for drain and charging
+    //table for drain and charging (based on HTC powerpack charging)
     int BAT_VOLT_D[7] = { 2500, 3330, 3450, 3660, 3800, 3900, 4000};
     int BAT_VOLT_C[7] = { 4350, 4400, 4450, 4500, 4560, 4620, 4650};
     int BAT_VOLT_CHARGING = 4190;
