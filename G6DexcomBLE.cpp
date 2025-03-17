@@ -63,6 +63,12 @@ static BLEUUID     firmwareUUID("2A26"); // READ
 // Not Found -> Scan() -> Found -> Connect() -> Connected -> Auth() -> Authenticated -> Read(), Disconnect() -> !Connected
 //                                    ^------------------------------------------------------------------------------`
 
+// New encryption for G7 will require EC-DSA-256 encryption:
+// Night Scout Implementation: https://github.com/NightscoutFoundation/xDrip/tree/master/libkeks/src/main/java/jamorham/keks
+// Arduino Library: https://github.com/ShubhamAnnigeri/tinyECC-ArduinoIDE
+
+
+
 //
 // DexcomSecurity static members
 //
