@@ -25,7 +25,7 @@
 // I think that may be the fastest hack. I can get the past 12 values, which is more than enough to
 // set the current value and trend, the only trick will be to not glitch the TFT too much on reboot.
 //
-// best way to avoid glithching would be to just reset the BLE module to whatever state it is in on reboot, and clear any other variables
+// best way to avoid glitching would be to just reset the BLE module to whatever state it is in on reboot, and clear any other variables
 //
 // worst hack would be to save last received values in flash (along with dextime value)
 //
@@ -35,14 +35,13 @@
 // add variable to keep track of bonding setup complete, and do not re-init the BLEDevice
 //
 // run function needs an error path
-// instead of just haveing a single line if not exit state, make entire logic into a large nested if statement.
+// instead of just having a single line if not exit state, make entire logic into a large nested if statement.
 //  the true path runs the next step, and the else runs exit state.
 
 #include <Arduino.h>
 #include <Esp.h>
 #include <Preferences.h>
-#include <driver/adc.h>
-#include "esp_adc_cal.h"
+#include <OneButton.h>
 #include "BLEDevice.h"
 #include "BLEScan.h"
 #include "DebugHelper.h"
@@ -98,7 +97,10 @@ static uint32_t lastSec = 0; //roll-over proof seconds counter (may loose time w
 static uint32_t lastUpdateSec = 0; //sec counter when the last refresh of the TFT was made (limit to ~1s)
 static uint32_t lastConnectSec = 0; //sec counter when the last connection was made
 static uint32_t lastDataSec = 0; //sec counter when the last data update was made (retained on reset)
+static uint32_t screenState = 1; // status of if the backlight is on
 
+OneButton btn_ScreenOff(BUTTON_1);
+OneButton  btn_ScreenOn(BUTTON_2);
 
 
 
@@ -128,6 +130,7 @@ void wakeUpRoutine()
         else
         {
             DexcomSecurity::forceRebondingEnable();
+            screenOn(); // Always turn the screen on after a hard reset
         }
 
     }
@@ -147,11 +150,22 @@ void wakeUpRoutine()
         flashStorage.putInt("DataAge", 600);
         flashStorage.end();
     }
+    flashStorage.begin("Dexcom", RO_MODE);
+    if( !flashStorage.isKey("ScreenOn"))
+    {
+        flashStorage.end();
+        flashStorage.begin("Dexcom", RW_MODE);
+        flashStorage.putInt("ScreenOn", 1);
+        flashStorage.end();
+    }
 
     // We set default values, so we always read data
     flashStorage.begin("Dexcom", RO_MODE);
     glucoseCurrentValue = flashStorage.getInt("CurVal");
     lastDataSec = flashStorage.getInt("DataAge");
+    if (flashStorage.getInt("ScreenOn") > 0) screenOn();
+    else screenOff();
+
     flashStorage.end();
 
     DexcomMFD::set_glucoseValue(glucoseCurrentValue);
@@ -162,19 +176,24 @@ void wakeUpRoutine()
  * Set up the ESP32 ble.
  */
 void setup()
-{    
-    std::string id = DexcomConnection::getTransmitterID();
+{
+    // Set long press threshold to ten seconds so we can still turn the screen off when scanning.
+    btn_ScreenOff.attachClick([](){ screenOff(); });
+    btn_ScreenOn.attachClick([](){ screenOn(); });
+    btn_ScreenOff.attachLongPressStart([](){ screenOff(); });
+    btn_ScreenOn.attachLongPressStart([](){ screenOn(); });
+    String id = DexcomConnection::getTransmitterID();
     DexcomMFD::setupTFT();
     Serial.begin(115200);
     setupLipo();
     Serial.println("Start...");
     Serial.print("Looking for transmitter: ");
-    Serial.println((char *)id.c_str());
+    Serial.println(id);
     wakeUpRoutine();
     DexcomMFD::drawScreen();
     DexcomMFD::drawTime(lastDataSec);
-    DexcomMFD::drawVBat(readVBat());
-    DexcomMFD::drawPBat(getPctBat(readVBat()));
+    DexcomMFD::drawVBat(readVBat(false));
+    DexcomMFD::drawPBat(getPctBat(readVBat(false)));
 }
 
 
@@ -189,11 +208,12 @@ void loop()
       saveDataAge(lastDataSec + timeDelta);
       DexcomMFD::drawTime(lastDataSec);
       if (lastUpdateSec / 10 > (lastUpdateSec - timeDelta) / 10) {
-        Serial.println("loop");
-        DexcomMFD::drawVBat(readVBat());
-        DexcomMFD::drawPBat(getPctBat(readVBat()));
+        DexcomMFD::drawVBat(readVBat(true));
+        DexcomMFD::drawPBat(getPctBat(readVBat(false)));
       }
     }
+    btn_ScreenOff.tick();
+    btn_ScreenOn.tick();
 
     switch (Status)
     {
@@ -215,8 +235,8 @@ void loop()
             DexcomMFD::set_glucoseValue(glucoseCurrentValue);
             lc709203f();
             DexcomMFD::drawScreen();
-            DexcomMFD::drawVBat(readVBat());
-            DexcomMFD::drawPBat(getPctBat(readVBat()));
+            DexcomMFD::drawVBat(readVBat(false));
+            DexcomMFD::drawPBat(getPctBat(readVBat(false)));
             lastUpdateSec = millis() / 1000;
             flashStorage.begin("Dexcom", RW_MODE);
             flashStorage.putInt("CurVal", glucoseCurrentValue);
@@ -235,7 +255,7 @@ void loop()
 /**
  * This function can be called in an error case.
  */
-void ExitState(std::string message)
+void ExitState(String message)
 {
     SerialPrintln(ERROR, message.c_str());
     DexcomConnection::disconnect();                                                                                              // Disconnect to trigger onDisconnect event and go to sleep.
@@ -362,20 +382,19 @@ void run()
 void setupLipo()
 {
     Serial.println(F("Setting up analog read of battery voltage"));
-    esp_adc_cal_characteristics_t adc_chars;
-    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
+    //set the resolution to 12 bits (0-4095)
+    analogReadResolution(12);
 }
 
-int readVBat()
+int readVBat(bool print)
 {
-    esp_adc_cal_characteristics_t adc_chars;
-    // Get the internal calibration value of the chip
-    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
-    uint32_t raw = analogRead(PIN_BAT_VOLT);
-    uint32_t v1 = esp_adc_cal_raw_to_voltage(raw, &adc_chars) * 2; //The partial pressure is one-half
-    Serial.print("Batt_Voltage: ");
-    Serial.print(v1);
-    Serial.println(" mV ");
+    uint32_t v1 = analogReadMilliVolts(PIN_BAT_VOLT);
+    if(print)
+    {
+        Serial.print("Batt_Voltage: ");
+        Serial.print(v1);
+        Serial.println(" mV ");
+    }
     return (int)v1;
 }
 
@@ -433,4 +452,23 @@ void saveDataAge(int32_t newAge) {
         flashStorage.putInt("DataAge", lastDataSec);
         flashStorage.end();
     }
+}
+
+void screenOn() {
+    DexcomMFD::set_brightness(255);
+    DexcomMFD::set_backlight(1); 
+    Serial.println("Backlight ON!");
+    // save state
+    flashStorage.begin("Dexcom", RW_MODE);
+    flashStorage.putInt("ScreenOn", 1);
+    flashStorage.end();
+}
+
+void screenOff() {
+    DexcomMFD::set_backlight(0); 
+    Serial.println("Backlight OFF!");
+    // save state
+    flashStorage.begin("Dexcom", RW_MODE);
+    flashStorage.putInt("ScreenOn", 0);
+    flashStorage.end();
 }

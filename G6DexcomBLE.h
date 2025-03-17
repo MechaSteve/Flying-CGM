@@ -13,10 +13,10 @@
 
 #include <Arduino.h>
 #include <Esp.h>
-#include "rom/crc.h"
 #include "mbedtls/aes.h"
 #include "BLEDevice.h"
 #include "BLEScan.h"
+#include "BLEUUID.h"
 #include "DebugHelper.h"
 
 
@@ -51,8 +51,8 @@ class DexcomSecurity : public BLESecurityCallbacks
         static bool requestBond();
         static void setupBonding();
     private:
-        static uint64_t calculateHash(uint64_t data, std::string id);
-        static void encrypt(uint8_t* buffer, std::string id, uint8_t* output);
+        static uint64_t calculateHash(uint64_t data, String id);
+        static void encrypt(uint8_t* buffer, String id, uint8_t* output);
 };
 
 class DexcomConnection : public BLEClientCallbacks
@@ -66,7 +66,7 @@ class DexcomConnection : public BLEClientCallbacks
     static uint8_t ControlSendBuffer[32];
     static uint8_t ControlResponseBuffer[32];
     static volatile size_t ControlResponseLength;
-    static std::string transmitterID;       // Static storage of one transmitter ID (only the last two characters matter)
+    static String transmitterID;       // Static storage of one transmitter ID (only the last two characters matter)
     static bool alternateChannel;        // Option to use the alternate data channel (true if using with pump)
     static bool errorConnection;            // Used to hold error status until the connection is disconnected.
     static volatile bool errorLastConnection;
@@ -84,8 +84,8 @@ class DexcomConnection : public BLEClientCallbacks
     static BLEClient* pClient;                                      // Is global so we can disconnect everywhere when an error occurred.
 
     public:  
-        static bool setTransmitterID(std::string updatedTransmitterID);    //returns true if the new transmitter ID is valid, and the value is updated.
-        static std::string getTransmitterID();
+        static bool setTransmitterID(String updatedTransmitterID);    //returns true if the new transmitter ID is valid, and the value is updated.
+        static String getTransmitterID();
         static void useAlternateChannel();
         static void usePrimaryChannel();
         static bool usingAlternateChannel();
@@ -112,13 +112,13 @@ class DexcomConnection : public BLEClientCallbacks
         static unsigned long sinceDisconnect();
         static bool lastConnectionWasError();
         static bool resetConnection();
-        static void commFault(std::string faultMessage);
+        static void commFault(String faultMessage);
 
     private:
         static void indicateControlCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify);
         static void indicateAuthCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify);
         static void notifyBackfillCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify);
-        static bool writeValue(std::string caller, BLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* pData, size_t length);
+        static bool writeValue(String caller, BLERemoteCharacteristic* pRemoteCharacteristic, uint8_t* pData, size_t length);
         static bool getCharacteristic(BLERemoteCharacteristic** pRemoteCharacteristic, BLERemoteService* pRemoteService, BLEUUID uuid) ;
         static bool registerForNotification(notify_callback _callback, BLERemoteCharacteristic *pBLERemoteCharacteristic);
         static bool forceRegisterNotificationAndIndication(notify_callback _callback, BLERemoteCharacteristic *pBLERemoteCharacteristic, bool isNotify);

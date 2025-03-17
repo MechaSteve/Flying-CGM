@@ -2,6 +2,7 @@
 
 #include "G6DexcomClient.h"
 #include "DebugHelper.h"
+#include "rom/crc.h"
 
 
 uint16_t DexcomClient::currentBG = 0;
@@ -128,7 +129,7 @@ bool DexcomClient::readGlucose()
 {
     uint8_t glucoseTxMessageG5[3] = {0x30, 0x53, 0x36};                                                                // G5 = 0x30 the other 2 bytes are the CRC16 XMODEM value in twisted order
     uint8_t glucoseTxMessageG6[3] = {0x4e, 0x0a, 0xa9};                                                                // G6 = 0x4e
-    std::string transmitterID = DexcomConnection::getTransmitterID();
+    String transmitterID = DexcomConnection::getTransmitterID();
     if(transmitterID[0] == 8 || (transmitterID[0] == 2 && transmitterID[1] == 2 && transmitterID[2] == 2))              // Check if G6 or one of the newest G6 plus (>2.18.2.88) see https://github.com/xdrip-js/xdrip-js/issues/87
         DexcomConnection::ControlSendValue(glucoseTxMessageG6, 3);
     else

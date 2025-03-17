@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include <Esp.h>
+#include <string.h>
 #include "DebugHelper.h"
 
 
@@ -48,7 +49,7 @@ void printHexArray(uint8_t *data, size_t length)
     SerialPrintln(DEBUG);
 }
 
-void printHexString(std::string value)
+void printHexString(String value)
 {
     for (int i = 0; i < value.length(); i++)
     {
@@ -58,9 +59,9 @@ void printHexString(std::string value)
     SerialPrintln(DEBUG);
 }
 
-std::string uint8ToString(uint8_t *data, size_t length)
+String uint8ToString(uint8_t *data, size_t length)
 {
-    std::string value = "";
+    String value = "";
     for (size_t i = 0; i < length; i++)
     {
         value += (char)data[i];

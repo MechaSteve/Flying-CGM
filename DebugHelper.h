@@ -10,6 +10,7 @@
 
 #include <Arduino.h>
 #include <Esp.h>
+#include <string.h>
 
 
 #ifndef DEBUGHELPER_H
@@ -57,7 +58,7 @@ void SerialPrintln(OutputType type, const char * text);
 /**
  * Prints a sting as hex values.
  */
-void printHexString(std::string value);
+void printHexString(String value);
 
 /**
  * Prints an uint8_t array as hex values.
@@ -68,7 +69,7 @@ void printHexArray(uint8_t *data, size_t length);
 /**
  * Converts an uint8_t array to string.
  */
-std::string uint8ToString(uint8_t *data, size_t length);
+String uint8ToString(uint8_t *data, size_t length);
 
 
 #endif /* DEBUGHELPER_H */

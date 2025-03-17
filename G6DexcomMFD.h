@@ -9,6 +9,7 @@
 
 #ifndef G6DEXCOMMFD_H
 #define G6DEXCOMMFD_H
+#define LILYGO_T_DISPLAY
 
 #include "Arduino.h"
 #include "U8g2lib.h"
@@ -34,7 +35,7 @@
 #define RED_3 0xC000       ///< 168,   0,   0
 
 class DexcomMFD {
-    static Arduino_ST7789 tft;
+    static Arduino_ST7789* tft;
     static int glucoseDisplay;
     static int rateDisplay;
     static int battDisplay;
@@ -48,6 +49,8 @@ class DexcomMFD {
     static int lowRateLimit;
     static int lowBattLimit;
     static int loLowBattLimit;
+    static int backlightState;
+    static int backlightBrightness;
 
     public:
         static void setupTFT();
@@ -69,10 +72,14 @@ class DexcomMFD {
         static void set_loLowBG(int limit);
         static void set_lowBatt(int limit);
         static void set_loLowBatt(int limit);
+        static void set_backlight(int state);
+        static int get_backlight();
+        static void set_brightness(int brightness);
 
     private:
         static int txtCenter(const String &str);
         static void pfdColorVTape( uint16_t x, uint16_t y1, uint16_t y2, uint16_t w, uint16_t color);
+        static void setBacklightLED();
 };
 
 /** generic draw indicator data struct

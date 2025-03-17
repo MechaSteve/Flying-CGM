@@ -1,5 +1,5 @@
 /*
- * G6DexcomBLE.cpp
+ * G6DexcomBLE
  *
  *  Created on: 2023.02.15
  *      Author: Stephen Culpepper
@@ -9,9 +9,10 @@
 
 #include <Arduino.h>
 #include <Esp.h>
-#include "rom/crc.h"
+#include "mbedtls\aes.h"
 #include "BLEDevice.h"
 #include "BLEScan.h"
+#include "BLEUUID.h"
 #include "G6DexcomBLE.h"
 #include "G6Transmitter.h"
 
@@ -118,7 +119,7 @@ bool DexcomSecurity::authenticate()
 /**
  * Calculates the 8 byte Hash for the given data.
  */
-uint64_t DexcomSecurity::calculateHash(uint64_t data, std::string id)
+uint64_t DexcomSecurity::calculateHash(uint64_t data, String id)
 {
     uint64_t returnValue = 0;
     //data = data + data;  //done as a string concat
@@ -135,11 +136,11 @@ uint64_t DexcomSecurity::calculateHash(uint64_t data, std::string id)
 /**
  * Encrypt using AES 182 ecb (Electronic Code Book Mode).
  */
-void DexcomSecurity::encrypt(uint8_t* buffer, std::string id, uint8_t* output)
+void DexcomSecurity::encrypt(uint8_t* buffer, String id, uint8_t* output)
 {
     mbedtls_aes_context aes;
 
-    std::string key = "00" + id + "00" + id;                                                                            // The key (that also used the transmitter) for the encryption.
+    String key = "00" + id + "00" + id;                                                                            // The key (that also used the transmitter) for the encryption.
 
     mbedtls_aes_init(&aes);
     mbedtls_aes_setkey_enc(&aes, (const unsigned char *)key.c_str(), strlen(key.c_str()) * 8);
@@ -177,7 +178,7 @@ int reasonCode = -1;
         reasonCode = auth_cmpl.fail_reason;
         Serial.println(auth_cmpl.fail_reason, HEX);
         Serial.println(reasonCode);
-    }   // bonding failled
+    }   // bonding failed
 }
 
 /**
@@ -187,7 +188,7 @@ void DexcomSecurity::setupBonding()
 { //CHANGE : Changed return type to void from bool. return value is not used (causing device reset?)
     BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);                                                                 // Enable security encryption.
     //TODO: Classified implementation will use either pMyDexcomSecurity or &MyDexcomSecurity
-    //This current method works because the old Security class was "static", but not really becasue it relied on globals
+    //This current method works because the old Security class was "static", but not really because it relied on globals
     BLEDevice::setSecurityCallbacks(new DexcomSecurity());
     BLESecurity *pSecurity = new BLESecurity();
     pSecurity->setKeySize();
@@ -207,7 +208,7 @@ bool DexcomSecurity::requestBond()
     if(bonding)
     {
 
-        SerialPrintln(DEBUG, "rqbdst");
+        SerialPrintln(DEBUG, "rqst_bd");
         
         if(forceRebonding) {
           // Enable bonding after successful auth and before sending bond request to transmitter.
@@ -237,7 +238,7 @@ bool DexcomSecurity::requestBond()
 }
 
 /**
- * The Dexcom Reciever is connected (serivces have been found and pointers saved)
+ * The Dexcom Receiver is connected (services have been found and pointers saved)
 */
 volatile bool DexcomConnection::connected = false;
 bool DexcomConnection::errorConnection = false;
@@ -251,7 +252,7 @@ uint8_t DexcomConnection::BackfillResponseBuffer[32];
 volatile size_t DexcomConnection::BackfillResponseLength = 0;
 uint8_t DexcomConnection::ControlResponseBuffer[32];
 volatile size_t DexcomConnection::ControlResponseLength = 0;
-std::string DexcomConnection::transmitterID = DEXCOM_CONFIG_DEFAULT_ID;       // Static storage of one transmitter ID (only the last two characters matter)
+String DexcomConnection::transmitterID = DEXCOM_CONFIG_DEFAULT_ID;       // Static storage of one transmitter ID (only the last two characters matter)
 
 
 BLERemoteCharacteristic* DexcomConnection::pRemoteCommunication = NULL;
@@ -264,7 +265,7 @@ BLERemoteCharacteristic* DexcomConnection::pRemoteFirmware = NULL;              
 
 BLEScan* DexcomConnection::pBLEScan = NULL;                                                           // The scanner used to look for the device
 BLEAdvertisedDevice* DexcomConnection::myDevice = NULL;                           // The remote device (transmitter) found by the scan and set by scan callback function.
-BLEClient* DexcomConnection::pClient = NULL;                                      // Is global so we can disconnect everywhere when an error occured.
+BLEClient* DexcomConnection::pClient = NULL;                                      // Is global so we can disconnect everywhere when an error occurred.
 
 /**
  * Getter functions
@@ -303,7 +304,7 @@ unsigned long DexcomConnection::sinceDisconnect() { return disconnectTime == 0 ?
  * Returns true if the update is successful.
  * Fails if the ID is not exactly 6 characters or if the 5th and 6th are not A-Z
 */
-bool DexcomConnection::setTransmitterID(std::string updatedTransmitterID)
+bool DexcomConnection::setTransmitterID(String updatedTransmitterID)
 {
     if (updatedTransmitterID.length() == 6) {
         if (updatedTransmitterID[4] >= 'A' && updatedTransmitterID[4] <= 'Z') {
@@ -315,7 +316,7 @@ bool DexcomConnection::setTransmitterID(std::string updatedTransmitterID)
     return transmitterID == updatedTransmitterID;
 }
 
-std::string DexcomConnection::getTransmitterID()
+String DexcomConnection::getTransmitterID()
 {
     return transmitterID;
 }
@@ -465,7 +466,7 @@ void DexcomConnection::find()
 
     pBLEScan = BLEDevice::getScan();                                                                        // Retrieve a Scanner.
     pBLEScan->setAdvertisedDeviceCallbacks(new nestedAdvertisedDeviceCallbacks());                              // Set the callback to informed when a new device was detected.
-    pBLEScan->setInterval(100); //100 works                                                                 // The time in ms how long each search intervall last. Important for fast scanning so we dont miss the transmitter waking up.
+    pBLEScan->setInterval(100); //100 works                                                                 // The time in ms how long each search intrevall last. Important for fast scanning so we dont miss the transmitter waking up.
     pBLEScan->setWindow(99); //60-99 works                                                                  // The actual time that will be searched. Interval - Window = time the esp is doing nothing (used for energy efficiency).
     pBLEScan->setActiveScan(false); 
     pBLEScan->start(3, true);                                                                               // false = maybe helps with connection problems.
@@ -478,7 +479,10 @@ void DexcomConnection::advertisedDeviceCallback(BLEAdvertisedDevice advertisedDe
 
     // We have found a device, let us now see if it contains the service we are looking for.
     if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(advServiceUUID) &&              // If the advertised service is the dexcom advertise service (not the main service that contains the characteristics).
-        advertisedDevice.haveName() && advertisedDevice.getName() == ("Dexcom" + transmitterID.substr(4,2)))
+        advertisedDevice.haveName() && 
+         (advertisedDevice.getName() == ("Dexcom" + transmitterID.substring(4,6)) ||
+          advertisedDevice.getName() == transmitterID)
+        )
     {
         pBLEScan->stop();                                                                               // We found our transmitter so stop scanning for now.
         SerialPrintln(DEBUG, "Found Dexcom");
@@ -496,7 +500,7 @@ bool DexcomConnection::connect()
     SerialPrint(DEBUG, "Forming a connection to ");
     SerialPrintln(DEBUG, myDevice->getAddress().toString().c_str());
 
-    pClient = BLEDevice::createClient();                                                                                // We specify the security settings later after we have successful authorised with the transmitter.
+    pClient = BLEDevice::createClient();                                                                                // We specify the security settings later after we have successful authorized with the transmitter.
     SerialPrintln(DEBUG, " - Created client");
 
     pClient->setClientCallbacks(new DexcomConnection());                                                                // Callbacks for onConnect() onDisconnect()
@@ -607,7 +611,7 @@ bool DexcomConnection::controlRegister()
 /**
  * Write a string to the given characteristic.
  */
-bool DexcomConnection::writeValue(std::string caller, BLERemoteCharacteristic *pRemoteCharacteristic, uint8_t* pData, size_t length)
+bool DexcomConnection::writeValue(String caller, BLERemoteCharacteristic *pRemoteCharacteristic, uint8_t* pData, size_t length)
 {
     SerialPrint(DEBUG, caller.c_str());
     SerialPrint(DEBUG, " - Writing Data = ");
@@ -648,7 +652,7 @@ bool DexcomConnection::registerForNotification(notify_callback _callback, BLERem
 bool DexcomConnection::forceRegisterNotificationAndIndication(notify_callback _callback, BLERemoteCharacteristic *pBLERemoteCharacteristic, bool isNotify)
 {
     pBLERemoteCharacteristic->registerForNotify(_callback, isNotify);                                                   // Register first for indication(/notification) (because this is the correct one)
-    pBLERemoteCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t *)bothOn, 2, true);         // True to wait for acknowledge, set to both, manually set the bytes because there is no such funktion to set both.
+    pBLERemoteCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t *)bothOn, 2, true);         // True to wait for acknowledge, set to both, manually set the bytes because there is no such function to set both.
     SerialPrint(DEBUG, " - FORCE registered for indicate and notify on UUID: ");
     SerialPrintln(DEBUG, pBLERemoteCharacteristic->getUUID().toString().c_str());
     return true;
@@ -662,7 +666,7 @@ bool DexcomConnection::registerForIndication(notify_callback _callback, BLERemot
 {
     if (pBLERemoteCharacteristic->canIndicate())
     {
-        pBLERemoteCharacteristic->registerForNotify(_callback, false);                                                  // false = indication, true = notification
+        pBLERemoteCharacteristic->registerForNotify(_callback, false);  // false = indication, true = notification
         SerialPrint(DEBUG, " - Registered for indicate on UUID: ");
         SerialPrintln(DEBUG, pBLERemoteCharacteristic->getUUID().toString().c_str());
         return true;
@@ -676,9 +680,9 @@ bool DexcomConnection::registerForIndication(notify_callback _callback, BLERemot
 }
 
 
-void DexcomConnection::commFault(std::string faultMessage)
+void DexcomConnection::commFault(String faultMessage)
 {
-    errorConnection = true;                                                                                    // Set to true to indicate that an error has occured.
+    errorConnection = true;                         // Set to true to indicate that an error has occurred.
     SerialPrintln(ERROR, faultMessage.c_str());
     pClient->disconnect();   
 }

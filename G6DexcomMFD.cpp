@@ -2,10 +2,18 @@
 // TODO: figure out the correct fonts to include
 
 // TODO: replace this with the correct library and class for the T-Display
-Arduino_DataBus *bus = new Arduino_ESP32LCD8(7 /* DC */, 6 /* CS */, 8 /* WR */, 9 /* RD */, 39 /* D0 */, 40 /* D1 */, 41 /* D2 */, 42 /* D3 */,
-                                             45 /* D4 */, 46 /* D5 */, 47 /* D6 */, 48 /* D7 */);
-Arduino_ST7789 DexcomMFD::tft = Arduino_ST7789(bus, 5 /* RST */, 0 /* rotation */, true /* IPS */, 170 /* width */, 320 /* height */, 35 /* col offset 1 */,
-                                      0 /* row offset 1 */, 35 /* col offset 2 */, 0 /* row offset 2 */);
+#define GFX_EXTRA_PRE_INIT()          \
+  {                                   \
+    pinMode(15 /* PWD */, OUTPUT);    \
+    digitalWrite(15 /* PWD */, HIGH); \
+  }
+#define GFX_BL 38
+Arduino_DataBus *bus = new Arduino_ESP32PAR8Q(
+    7 /* DC */, 6 /* CS */, 8 /* WR */, 9 /* RD */,
+    39 /* D0 */, 40 /* D1 */, 41 /* D2 */, 42 /* D3 */, 45 /* D4 */, 46 /* D5 */, 47 /* D6 */, 48 /* D7 */);
+Arduino_ST7789* DexcomMFD::tft = new Arduino_ST7789(bus, 5 /* RST */, 0 /* rotation */, true /* IPS */, 170 /* width */, 
+    320 /* height */, 35 /* col offset 1 */, 0 /* row offset 1 */, 35 /* col offset 2 */, 0 /* row offset 2 */);
+
 int DexcomMFD::hiHighLimit = 200;
 int DexcomMFD::highLimit = 150;
 int DexcomMFD::lowLimit = 80;
@@ -14,6 +22,8 @@ int DexcomMFD::glucoseDisplay = 0;
 int DexcomMFD::rateDisplay = +7;
 int DexcomMFD::battDisplay = 72;
 int DexcomMFD::dataAge = 1200;
+int DexcomMFD::backlightState = 1;
+int DexcomMFD::backlightBrightness = 255;
 
 
 // TODO: rework this for the T-Display
@@ -21,9 +31,8 @@ int DexcomMFD::dataAge = 1200;
 void DexcomMFD::setupTFT()
 {
     // turn on backlight
-    ledcSetup( LCD_BL_LED_CHANNEL, LCD_BL_LED_FREQ, LCD_BL_LED_RES);
-    ledcAttachPin(PIN_LCD_BL, LCD_BL_LED_CHANNEL);
-    ledcWrite( LCD_BL_LED_CHANNEL, 255);
+    ledcAttach( PIN_LCD_BL, LCD_BL_LED_FREQ, LCD_BL_LED_RES);
+    ledcWrite( PIN_LCD_BL, 128);
 
     // turn on the TFT / I2C power supply
     pinMode(PIN_POWER_ON, OUTPUT);
@@ -31,13 +40,13 @@ void DexcomMFD::setupTFT()
     delay(10);
 
     // initialize TFT
-    tft.begin();
-    tft.setRotation(0);
-    tft.fillScreen(BLACK);
+    tft->begin();
+    tft->setRotation(0);
+    tft->fillScreen(BLACK);
 
     Serial.println(F("Initialized"));
 
-    set_hiHighBG(220);
+    set_hiHighBG(260);
     set_highBG(170);
     set_lowBG(100);
     set_loLowBG(75);
@@ -51,7 +60,7 @@ void DexcomMFD::drawScreen()
     const static int gluTpWd = 14;
     const static int gluTpOfSt = gluWd - gluTpWd;
     const static int gluHt = 178;
-    const static int gluMax = 250;
+    const static int gluMax = 300;
     const static int gluMin = 40;
     const static int gluPPP_100 = ( gluHt * 100 ) / (gluMax - gluMin); //glucose Pixels per Point x100
     const static int gluYMx = gluY + 2;
@@ -64,38 +73,38 @@ void DexcomMFD::drawScreen()
     int textOffset = glucoseDisplay > 99 ? 24 : 12;
     if (glucoseY > gluYMn) glucoseY = gluYMn;
     if (glucoseY < gluYMx) glucoseY = gluYMx;
-    tft.fillScreen(BLACK);
-    tft.drawFastHLine(gluX, gluY, gluWd, WHITE);
-    tft.drawFastHLine(gluX, gluY + 1, gluWd, WHITE);
-    tft.drawFastHLine(gluX, gluY + gluHt + 2, gluWd, WHITE);
-    tft.drawFastHLine(gluX, gluY + gluHt + 3, gluWd, WHITE);
-    tft.drawFastHLine(gluX + gluWd, gluYH, 5, WHITE);
-    tft.drawFastHLine(gluX + gluWd, gluYH + 1, 5, WHITE);
-    tft.drawFastHLine(gluX + gluWd, gluYL, 5, WHITE);
-    tft.drawFastHLine(gluX + gluWd, gluYL + 1, 5, WHITE);
-    tft.drawFastVLine(gluX + gluWd, gluY, gluHt + 4, WHITE);
-    tft.drawFastVLine(gluX + gluWd + 1, gluY, gluHt + 4, WHITE);
-    // tft.fillRect(gluX + gluTpOfSt, gluYMx, gluTpWd, gluYHH - gluYMx, RED); //High-High warning bar
-    // tft.fillRect(gluX + gluTpOfSt, gluYLL, gluTpWd, gluYMn - gluYLL, RED); //Low-Low Warning bar
-    // tft.fillRect(gluX + gluTpOfSt, gluYHH, gluTpWd, gluYH - gluYHH, YELLOW); //high caution bar
-    // tft.fillRect(gluX + gluTpOfSt, gluYL, gluTpWd, gluYLL - gluYL, YELLOW); //low caution bar
-    // tft.fillRect(gluX + gluTpOfSt, gluYH, gluTpWd, gluYL - gluYH, GREEN); //green control band
+    tft->fillScreen(BLACK);
+    tft->drawFastHLine(gluX, gluY, gluWd, WHITE);
+    tft->drawFastHLine(gluX, gluY + 1, gluWd, WHITE);
+    tft->drawFastHLine(gluX, gluY + gluHt + 2, gluWd, WHITE);
+    tft->drawFastHLine(gluX, gluY + gluHt + 3, gluWd, WHITE);
+    tft->drawFastHLine(gluX + gluWd, gluYH, 5, WHITE);
+    tft->drawFastHLine(gluX + gluWd, gluYH + 1, 5, WHITE);
+    tft->drawFastHLine(gluX + gluWd, gluYL, 5, WHITE);
+    tft->drawFastHLine(gluX + gluWd, gluYL + 1, 5, WHITE);
+    tft->drawFastVLine(gluX + gluWd, gluY, gluHt + 4, WHITE);
+    tft->drawFastVLine(gluX + gluWd + 1, gluY, gluHt + 4, WHITE);
+    // tft->fillRect(gluX + gluTpOfSt, gluYMx, gluTpWd, gluYHH - gluYMx, RED); //High-High warning bar
+    // tft->fillRect(gluX + gluTpOfSt, gluYLL, gluTpWd, gluYMn - gluYLL, RED); //Low-Low Warning bar
+    // tft->fillRect(gluX + gluTpOfSt, gluYHH, gluTpWd, gluYH - gluYHH, YELLOW); //high caution bar
+    // tft->fillRect(gluX + gluTpOfSt, gluYL, gluTpWd, gluYLL - gluYL, YELLOW); //low caution bar
+    // tft->fillRect(gluX + gluTpOfSt, gluYH, gluTpWd, gluYL - gluYH, GREEN); //green control band
     pfdColorVTape(gluX + gluTpOfSt, gluYH, gluYL, gluTpWd, GREEN);
     pfdColorVTape(gluX + gluTpOfSt, gluYHH, gluYH, gluTpWd, YELLOW);
     pfdColorVTape(gluX + gluTpOfSt, gluYL, gluYLL, gluTpWd, YELLOW);
     pfdColorVTape(gluX + gluTpOfSt, gluYMx, gluYHH, gluTpWd, RED);
     pfdColorVTape(gluX + gluTpOfSt, gluYLL, gluYMn, gluTpWd, RED);
-    tft.setTextColor(WHITE);
-    tft.setFont(u8g2_font_helvB14_te);
-    // tft.setCursor(gluX - 15, 12);
-    tft.setCursor(gluX + gluTpOfSt - 20, 36);
-    tft.println("CGM");
-    tft.setCursor(gluX + gluWd + 8, gluYH + 5);
-    tft.println(highLimit);
-    tft.setCursor(gluX + gluWd + 8, gluYL + 5);
-    tft.println(lowLimit);
-    tft.setFont(u8g2_font_inb21_mr);
-    // tft.setCursor(gluX - 20, gluY - 8);
+    tft->setTextColor(WHITE);
+    tft->setFont(u8g2_font_helvB14_te);
+    // tft->setCursor(gluX - 15, 12);
+    tft->setCursor(gluX + gluTpOfSt - 20, 36);
+    tft->println("CGM");
+    tft->setCursor(gluX + gluWd + 8, gluYH + 5);
+    tft->println(highLimit);
+    tft->setCursor(gluX + gluWd + 8, gluYL + 5);
+    tft->println(lowLimit);
+    tft->setFont(u8g2_font_inb21_mr);
+    // tft->setCursor(gluX - 20, gluY - 8);
     if (glucoseDisplay > 10)
     {
         // Serial.print("Value: ");
@@ -103,15 +112,32 @@ void DexcomMFD::drawScreen()
         // Serial.print(" Text offset: ");
         // Serial.println(txtCenter(String(glucoseDisplay)));
 
-        tft.setCursor(gluX + gluTpOfSt - textOffset, gluY - 8);
-        tft.println(glucoseDisplay);
-        tft.fillTriangle(gluX, glucoseY - (gluTpWd / 2), gluX + gluWd, glucoseY, gluX, glucoseY + (gluWd / 2), WHITE);
-        tft.drawTriangle(gluX, glucoseY - (gluTpWd / 2), gluX + gluWd, glucoseY, gluX, glucoseY + (gluWd / 2), BLACK);
+        tft->setCursor(gluX + gluTpOfSt - textOffset, gluY - 8);
+        tft->println(glucoseDisplay);
+        tft->fillTriangle(gluX, glucoseY - (gluTpWd / 2), gluX + gluWd, glucoseY, gluX, glucoseY + (gluWd / 2), WHITE);
+        tft->drawTriangle(gluX, glucoseY - (gluTpWd / 2), gluX + gluWd, glucoseY, gluX, glucoseY + (gluWd / 2), BLACK);
     }
     else
     {
-        tft.setCursor(gluX + gluTpOfSt - txtCenter("---"), gluY - 8);
-        tft.println("---");
+        tft->setCursor(gluX + gluTpOfSt - txtCenter("---"), gluY - 8);
+        tft->println("---");
+    }
+
+    if (dataAge < 15) // Data is new make sure we see it
+    {
+        set_brightness(255);
+    }
+    else if ((dataAge > 600) || (glucoseDisplay > hiHighLimit) || (glucoseDisplay < loLowLimit))  // Data is old, or Alarm level
+    {
+        set_brightness(192);
+    }
+    else if ((dataAge < 60) && ((glucoseDisplay > highLimit) || (glucoseDisplay < lowLimit))) // Give more time to see warning conditions
+    {
+        set_brightness(128);
+    }
+    else
+    {
+        set_brightness(64);
     }
 
 
@@ -138,10 +164,10 @@ void DexcomMFD::pfdColorVTape( uint16_t x, uint16_t y1, uint16_t y2, uint16_t w,
   }
   if (h > 0) {
     for(int i = 0; i < w; i++) {
-      if (w > 2 && (i == 0 || i == w-1)) tft.drawFastVLine(x+i, y1, h, color_3);
-      else if (w > 4 && (i == 1 || i == w-2)) tft.drawFastVLine(x+i, y1, h, color_2);
-      else if (w > 6 && (i == 2 || i == w-3)) tft.drawFastVLine(x+i, y1, h, color_1);
-      else tft.drawFastVLine(x+i, y1, h, color);
+      if (w > 2 && (i == 0 || i == w-1)) tft->drawFastVLine(x+i, y1, h, color_3);
+      else if (w > 4 && (i == 1 || i == w-2)) tft->drawFastVLine(x+i, y1, h, color_2);
+      else if (w > 6 && (i == 2 || i == w-3)) tft->drawFastVLine(x+i, y1, h, color_1);
+      else tft->drawFastVLine(x+i, y1, h, color);
     }
   }
 }
@@ -150,8 +176,8 @@ void DexcomMFD::drawGrid()
 {
     int w = 170;
     int h = 320;
-    for (int x = 9; x < w; x+=10) tft.drawFastVLine(x, 0, h, DARKGREY);
-    for (int y = 9; y < h; y+=10) tft.drawFastHLine(0, y, w, DARKGREY);
+    for (int x = 9; x < w; x+=10) tft->drawFastVLine(x, 0, h, DARKGREY);
+    for (int y = 9; y < h; y+=10) tft->drawFastHLine(0, y, w, DARKGREY);
 }
 
 void DexcomMFD::drawTime(uint32_t time)
@@ -178,22 +204,41 @@ void DexcomMFD::drawTime(uint32_t time)
     if (time > 300) color = YELLOW;
     if (time > 600) color = RED;
 
-    tft.drawRoundRect(x-4, y-hDig-2, 5*wDig + 8, hDig + 8, 3, color); //age status
-    tft.drawRoundRect(x-3, y-hDig-1, 5*wDig + 6, hDig + 6, 3, color); //age status
+    tft->drawRoundRect(x-4, y-hDig-2, 5*wDig + 8, hDig + 8, 3, color); //age status
+    tft->drawRoundRect(x-3, y-hDig-1, 5*wDig + 6, hDig + 6, 3, color); //age status
 
-    tft.fillRoundRect(x-2, y-hDig, 5*wDig + 4, hDig + 4, 3, BLACK); //Erase old time
-    tft.setTextColor(WHITE);
-    tft.setFont(u8g2_font_helvB14_te);
-    tft.setCursor(x, y);
-    if (minTens > 0) tft.println(minTens);
-    tft.setCursor(x + wDig, y);
-    tft.println(minOnes);
-    tft.setCursor(x + 2*wDig, y);
-    tft.println(":");
-    tft.setCursor(x + 3*wDig, y);
-    tft.println(secTens);
-    tft.setCursor(x + 4*wDig, y);
-    tft.println(secOnes);
+    tft->fillRoundRect(x-2, y-hDig, 5*wDig + 4, hDig + 4, 3, BLACK); //Erase old time
+    tft->setTextColor(WHITE);
+    tft->setFont(u8g2_font_helvB14_te);
+    tft->setCursor(x, y);
+    if (minTens > 0) tft->println(minTens);
+    tft->setCursor(x + wDig, y);
+    tft->println(minOnes);
+    tft->setCursor(x + 2*wDig, y);
+    tft->println(":");
+    tft->setCursor(x + 3*wDig, y);
+    tft->println(secTens);
+    tft->setCursor(x + 4*wDig, y);
+    tft->println(secOnes);
+
+    
+
+    if (time < 15) // Data is new make sure we see it
+    {
+        set_brightness(255);
+    }
+    else if ((time > 600) || (glucoseDisplay > hiHighLimit) || (glucoseDisplay < loLowLimit))  // Data is old, or Alarm level
+    {
+        set_brightness(192);
+    }
+    else if ((time < 60) && ((glucoseDisplay > highLimit) || (glucoseDisplay < lowLimit))) // Give more time to see warning conditions
+    {
+        set_brightness(128);
+    }
+    else
+    {
+        set_brightness(64);
+    }
 
 }
 
@@ -207,19 +252,19 @@ void DexcomMFD::drawVBat(int mVolts)
     int tenths = (mVolts - 1000*volts) / 100;
     int hundreths = (mVolts - 1000*volts - 100*tenths) / 10;
 
-    tft.fillRoundRect(x-2, y-hDig, 5*wDig + 4, hDig + 4, 3, BLACK); //Erase old time
-    tft.setTextColor(WHITE);
-    tft.setFont(u8g2_font_helvB10_te);
-    tft.setCursor(x, y);
-    tft.println(volts);
-    tft.setCursor(x + wDig, y);
-    tft.println(".");
-    tft.setCursor(x + 2*wDig, y);
-    tft.println(tenths);
-    tft.setCursor(x + 3*wDig, y);
-    tft.println(hundreths);
-    tft.setCursor(x + 4*wDig, y);
-    tft.println("v");
+    tft->fillRoundRect(x-2, y-hDig, 5*wDig + 4, hDig + 4, 3, BLACK); //Erase old time
+    tft->setTextColor(WHITE);
+    tft->setFont(u8g2_font_helvB10_te);
+    tft->setCursor(x, y);
+    tft->println(volts);
+    tft->setCursor(x + wDig, y);
+    tft->println(".");
+    tft->setCursor(x + 2*wDig, y);
+    tft->println(tenths);
+    tft->setCursor(x + 3*wDig, y);
+    tft->println(hundreths);
+    tft->setCursor(x + 4*wDig, y);
+    tft->println("v");
 
 }
 
@@ -233,23 +278,23 @@ void DexcomMFD::drawPBat(int pct)
     int tens = (pct - 100*hundreds) / 10;
     int ones = pct - 100*hundreds - 10*tens;
 
-    tft.fillRoundRect(x-2, y-hDig, 5*wDig + 4, hDig + 4, 3, BLACK); //Erase old time
-    tft.setTextColor(WHITE);
-    tft.setFont(u8g2_font_helvB10_te);
+    tft->fillRoundRect(x-2, y-hDig, 5*wDig + 4, hDig + 4, 3, BLACK); //Erase old time
+    tft->setTextColor(WHITE);
+    tft->setFont(u8g2_font_helvB10_te);
     if(pct >= 100)
     {        
-        tft.setCursor(x, y);
-        tft.println(hundreds);
+        tft->setCursor(x, y);
+        tft->println(hundreds);
     }
     if(pct >= 10)
     {        
-        tft.setCursor(x + wDig, y);
-        tft.println(tens);
+        tft->setCursor(x + wDig, y);
+        tft->println(tens);
     }
-    tft.setCursor(x + 2*wDig, y);
-    tft.println(ones);
-    tft.setCursor(x + 3*wDig, y);
-    tft.println("%");
+    tft->setCursor(x + 2*wDig, y);
+    tft->println(ones);
+    tft->setCursor(x + 3*wDig, y);
+    tft->println("%");
 
 }
 
@@ -314,13 +359,42 @@ void DexcomMFD::set_loLowBatt(int limit)
 {
 }
 
+void DexcomMFD::set_backlight(int state)
+{
+    backlightState = state;
+    setBacklightLED();
+}
+
+int DexcomMFD::get_backlight()
+{
+    return backlightState;
+}
+
+void DexcomMFD::set_brightness(int brightness)
+{
+    backlightBrightness = brightness;
+    setBacklightLED();
+}
+
+void DexcomMFD::setBacklightLED()
+{
+    if (backlightState > 0)
+    {
+        ledcWrite( PIN_LCD_BL, backlightBrightness);
+    }
+    else
+    {
+        ledcWrite( PIN_LCD_BL, 0);
+    }
+}
+
 //returns the center offset for the given string
 int DexcomMFD::txtCenter(const String &str)
 {
     int16_t  x1, y1;
     uint16_t w, h;
 
-    tft.getTextBounds(str, 20, 20, &x1, &y1, &w, &h);
+    tft->getTextBounds(str, 20, 20, &x1, &y1, &w, &h);
     return w / 2;
 }
 
